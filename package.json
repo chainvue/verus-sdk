@@ -9,9 +9,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
-  "keywords": ["verus", "cryptocurrency", "offline-signing", "typescript"],
+  "keywords": [
+    "verus",
+    "cryptocurrency",
+    "offline-signing",
+    "typescript"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -45,5 +50,14 @@
   },
   "files": [
     "dist/**/*"
-  ]
+  ],
+  "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "overrides": {
+      "bitcoin-ops": "github:VerusCoin/bitcoin-ops"
+    },
+    "patchedDependencies": {
+      "bitcoin-ops": "patches/bitcoin-ops.patch"
+    }
+  }
 }
