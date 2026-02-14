@@ -46,6 +46,8 @@ import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash } from '../utils/index.js';
 import { signTransactionSmart, getNetwork } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
+import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
+import { validateWif } from '../keys/index.js';
 import type {
   Utxo,
   CreateCommitmentParams,
@@ -313,6 +315,8 @@ export function buildP2IDScript(iAddress: string): Buffer {
 export function buildReferralPaymentScript(iAddress: string): Buffer {
   const identityDest = new TxDestination(IdentityID.fromAddress(iAddress));
 
+  // Master: EVAL_NONE outputs have empty master (no index destinations)
+  // This matches the daemon's MakeMofNCCScript for EVAL_NONE condition objects
   const master = new OptCCParams({
     version: new BN(3),
     eval_code: new BN(EVALS.EVAL_NONE),
@@ -490,6 +494,29 @@ export function buildTokenChangeOutput(
   return { script: script.toBuffer(), nativeValue: 0 };
 }
 
+// ─── Validation ──────────────────────────────────────────────────
+
+const IDENTITY_NAME_RE = /^[a-z0-9_-]{1,64}$/;
+
+function validateIdentityWif(wif: string): void {
+  if (!wif || typeof wif !== 'string') {
+    throw new InvalidWifError('WIF is required');
+  }
+  const check = validateWif(wif);
+  if (!check.valid) {
+    throw new InvalidWifError(check.error);
+  }
+}
+
+function validateIdentityName(name: string): void {
+  if (!name || typeof name !== 'string') {
+    throw new InvalidNameError('', 'Name is required');
+  }
+  if (!IDENTITY_NAME_RE.test(name)) {
+    throw new InvalidNameError(name);
+  }
+}
+
 // ─── Workflow Orchestrators ────────────────────────────────────────
 
 /**
@@ -499,6 +526,11 @@ export function buildAndSignCommitment(
   params: CreateCommitmentParams,
   network: Network
 ): CreateCommitmentResult {
+  validateIdentityWif(params.wif);
+  validateIdentityName(params.name);
+  if (!params.utxos || params.utxos.length === 0) {
+    throw new TransactionBuildError('At least one UTXO is required');
+  }
   const verusNetwork = getNetwork(network === 'testnet');
   const networkConfig = NETWORK_CONFIG[network];
 
@@ -572,6 +604,13 @@ export function buildAndSignRegistration(
   params: RegisterIdentityParams,
   network: Network
 ): RegisterIdentityResult {
+  validateIdentityWif(params.wif);
+  if (!params.primaryAddresses || params.primaryAddresses.length === 0) {
+    throw new TransactionBuildError('At least one primary address is required');
+  }
+  if (!params.utxos || params.utxos.length === 0) {
+    throw new TransactionBuildError('At least one funding UTXO is required');
+  }
   const verusNetwork = getNetwork(network === 'testnet');
   const networkConfig = NETWORK_CONFIG[network];
   const systemId = networkConfig.chainId;
@@ -638,7 +677,11 @@ function _buildVrscRegistration(
     }
   }
 
-  const requiredNative = fees.issuerFee;
+  // requiredNative = full registration fee (referral outputs come out of this total)
+  // implicit fee to miners = totalFee - sum(referral outputs) + txFee
+  const totalFee = params.registrationFee ?? DEFAULT_REGISTRATION_FEE;
+  const totalReferralPayments = referralOutputs.reduce((sum, o) => sum + o.value, 0);
+  const requiredNative = totalFee;
   const numOutputs = 2 + referralOutputs.length + 1;
   const selection = selectUtxos(
     params.utxos,
@@ -699,7 +742,7 @@ function _buildVrscRegistration(
     txid,
     fee: selection.fee,
     identityAddress,
-    registrationFee: fees.issuerFee,
+    registrationFee: totalFee - totalReferralPayments,
     referralPayments: referralOutputs.length,
     referralAmountEach: fees.referralAmount,
     inputsUsed: allUtxos.length,
@@ -821,6 +864,13 @@ export function buildAndSignIdentityUpdate(
   operation: 'update' | 'revoke' | 'recover' | 'lock' | 'unlock' = 'update',
   lockUnlockParams?: { unlockAfter?: number }
 ): UpdateIdentityResult {
+  validateIdentityWif(params.wif);
+  if (!params.identityHex) {
+    throw new TransactionBuildError('identityHex is required');
+  }
+  if (!params.utxos || params.utxos.length === 0) {
+    throw new TransactionBuildError('At least one funding UTXO is required');
+  }
   const verusNetwork = getNetwork(network === 'testnet');
   const networkConfig = NETWORK_CONFIG[network];
   const systemId = networkConfig.chainId;

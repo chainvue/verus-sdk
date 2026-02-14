@@ -1,6 +1,6 @@
 {
   "name": "@chainvue/verus-typescript-sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "100% offline, fully typed TypeScript SDK for Verus transaction signing",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

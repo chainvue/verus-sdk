@@ -145,6 +145,51 @@ describe('identity', () => {
       // referralAmount = floor(100 / 5) = 20 VRSC
       expect(result.referralAmount).toBe(2_000_000_000);
     });
+
+    it('should handle custom fee (200 VRSC) with 3 levels', () => {
+      const customFee = 20_000_000_000; // 200 VRSC
+      const result = calculateRegistrationFees(true, customFee, 3);
+      // issuerFee = floor(200 * 4/5) = 160 VRSC
+      expect(result.issuerFee).toBe(16_000_000_000);
+      // referralAmount = floor(200 / 5) = 40 VRSC
+      expect(result.referralAmount).toBe(4_000_000_000);
+      expect(result.totalRequired).toBe(16_000_000_000 + 4_000_000_000 * 3);
+    });
+
+    it('should handle custom levels (5 levels)', () => {
+      const result = calculateRegistrationFees(true, DEFAULT_REGISTRATION_FEE, 5);
+      // issuerFee = floor(100 * 6/7) ≈ 85.71 VRSC → 8571428571 sat
+      expect(result.issuerFee).toBe(Math.floor(10_000_000_000 * 6 / 7));
+      // referralAmount = floor(100 / 7) ≈ 14.28 VRSC → 1428571428 sat
+      expect(result.referralAmount).toBe(Math.floor(10_000_000_000 / 7));
+    });
+
+    it('should handle 0 referral levels (all to issuer)', () => {
+      const result = calculateRegistrationFees(true, DEFAULT_REGISTRATION_FEE, 0);
+      // With 0 levels: issuerFee = floor(100 * 1/2) = 50 VRSC
+      expect(result.issuerFee).toBe(5_000_000_000);
+      // referralAmount = floor(100 / 2) = 50 VRSC
+      expect(result.referralAmount).toBe(5_000_000_000);
+      // totalRequired = 50 + (50 * 0) = 50
+      expect(result.totalRequired).toBe(5_000_000_000);
+    });
+
+    it('should handle very small fee (edge case rounding)', () => {
+      const tinyFee = 7; // 7 satoshis
+      const result = calculateRegistrationFees(true, tinyFee, 3);
+      // issuerFee = floor(7 * 4/5) = floor(5.6) = 5
+      expect(result.issuerFee).toBe(5);
+      // referralAmount = floor(7 / 5) = floor(1.4) = 1
+      expect(result.referralAmount).toBe(1);
+    });
+
+    it('should return full custom fee when no referral', () => {
+      const customFee = 50_000_000_000; // 500 VRSC
+      const result = calculateRegistrationFees(false, customFee, 5);
+      expect(result.issuerFee).toBe(customFee);
+      expect(result.referralAmount).toBe(0);
+      expect(result.totalRequired).toBe(customFee);
+    });
   });
 
   describe('deriveIdentityAddress', () => {

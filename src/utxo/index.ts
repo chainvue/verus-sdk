@@ -7,6 +7,7 @@
 
 import { smarttxs } from '@bitgo/utxo-lib';
 import { NETWORK_CONFIG, DEFAULT_FEE_PER_KB, DUST_THRESHOLD } from '../constants/index.js';
+import { InsufficientFundsError } from '../errors.js';
 import type { Utxo, DecodedUtxo, SelectionResult } from '../types/index.js';
 
 const { unpackOutput } = smarttxs;
@@ -114,8 +115,9 @@ export function selectUtxos(
 
     for (const [currency, needed] of remaining) {
       if (currency !== systemId && needed > 0) {
-        throw new Error(
-          `Insufficient ${currency} balance. Need ${needed} more satoshis.`
+        const totalAvailable = decoded.reduce((sum, u) => sum + (u.currencyValues.get(currency) || 0), 0);
+        throw new InsufficientFundsError(
+          needed + totalAvailable, totalAvailable, currency,
         );
       }
     }
@@ -143,8 +145,9 @@ export function selectUtxos(
   while (remainingNative + fee > 0) {
     const next = nativeOnly.shift();
     if (!next) {
-      throw new Error(
-        `Insufficient VRSC balance. Need ${remainingNative + fee} more satoshis.`
+      const totalAvailable = decoded.reduce((sum, u) => sum + u.satoshis, 0);
+      throw new InsufficientFundsError(
+        requiredNative + fee, totalAvailable, 'VRSC',
       );
     }
 

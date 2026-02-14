@@ -62,6 +62,16 @@ export {
 // Unit conversions (also available via utils namespace)
 export { toSatoshis, toCoins } from './utils/index.js';
 
+// Typed errors
+export {
+  VerusError,
+  InsufficientFundsError,
+  InvalidWifError,
+  InvalidAddressError,
+  InvalidNameError,
+  TransactionBuildError,
+} from './errors.js';
+
 // Constants
 export {
   NETWORK_CONFIG,

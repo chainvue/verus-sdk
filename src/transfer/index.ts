@@ -25,6 +25,8 @@ import { signTransactionSmart, getNetwork } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { buildTokenChangeOutput } from '../identity/index.js';
 import { addressToScriptPubKey } from '../utils/index.js';
+import { InvalidWifError, TransactionBuildError } from '../errors.js';
+import { validateWif } from '../keys/index.js';
 import type {
   Utxo,
   CurrencyOutput,
@@ -38,6 +40,27 @@ import type {
 } from '../types/index.js';
 
 const { createUnfundedCurrencyTransfer } = smarttxs;
+
+/** Validate common transfer parameters */
+function validateTransferInputs(wif: string, utxos: Utxo[]): void {
+  if (!wif || typeof wif !== 'string') {
+    throw new InvalidWifError('WIF is required');
+  }
+  const wifCheck = validateWif(wif);
+  if (!wifCheck.valid) {
+    throw new InvalidWifError(wifCheck.error);
+  }
+  if (!utxos || utxos.length === 0) {
+    throw new TransactionBuildError('At least one UTXO is required');
+  }
+}
+
+/** Validate amount is positive and finite */
+function validateAmount(amount: number, label: string = 'amount'): void {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new TransactionBuildError(`Invalid ${label}: must be a positive finite number (got ${amount})`);
+  }
+}
 
 /**
  * Parse an address string into a TransferDestination
@@ -86,6 +109,10 @@ export function sendCurrency(
   params: SendCurrencyParams,
   network: Network
 ): SendCurrencyResult {
+  validateTransferInputs(params.wif, params.utxos);
+  if (!params.outputs || params.outputs.length === 0) {
+    throw new TransactionBuildError('At least one output is required');
+  }
   const networkConfig = NETWORK_CONFIG[network];
   const verusNetwork = getNetwork(network === 'testnet');
   const systemId = networkConfig.chainId;
@@ -196,6 +223,7 @@ export function transfer(
   params: TransferParams,
   network: Network
 ): SendCurrencyResult {
+  validateAmount(params.amount);
   const systemId = NETWORK_CONFIG[network].chainId;
   return sendCurrency({
     wif: params.wif,
@@ -218,6 +246,7 @@ export function transferToken(
   params: TransferTokenParams,
   network: Network
 ): SendCurrencyResult {
+  validateAmount(params.amount);
   return sendCurrency({
     wif: params.wif,
     outputs: [{
@@ -239,6 +268,7 @@ export function convert(
   params: ConvertParams,
   network: Network
 ): SendCurrencyResult {
+  validateAmount(params.amount);
   return sendCurrency({
     wif: params.wif,
     outputs: [{
@@ -262,6 +292,19 @@ export function buildAndSign(
   params: BuildAndSignParams,
   network: Network
 ): SignedTxResult {
+  if (!params.wif || typeof params.wif !== 'string') {
+    throw new InvalidWifError('WIF is required');
+  }
+  const wifCheck = validateWif(params.wif);
+  if (!wifCheck.valid) {
+    throw new InvalidWifError(wifCheck.error);
+  }
+  if (!params.inputs || params.inputs.length === 0) {
+    throw new TransactionBuildError('At least one input is required');
+  }
+  if (!params.outputs || params.outputs.length === 0) {
+    throw new TransactionBuildError('At least one output is required');
+  }
   const verusNetwork = getNetwork(network === 'testnet');
 
   const totalInput = params.inputs.reduce((sum, i) => sum + i.amount, 0);
