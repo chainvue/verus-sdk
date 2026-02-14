@@ -38,7 +38,29 @@ export type {
   SignMessageResult,
   VerifyMessageParams,
   VerifyMessageResult,
+  // Shared domain types
+  CurrencyBalance,
+  TransactionDirection,
+  Transaction,
+  VerusIdentity,
+  ConversionQuote,
 } from './types/index.js';
+
+// Currency classification (also available via currency namespace)
+export { classifyCurrency, CURRENCY_TYPE_ORDER } from './currency/classify.js';
+export type { CurrencyType } from './currency/classify.js';
+
+// Address utilities (also available via address namespace)
+export {
+  BASE58_RE,
+  isRAddress,
+  isIAddress,
+  isVerusAddress,
+  isIdentityName,
+} from './address/index.js';
+
+// Unit conversions (also available via utils namespace)
+export { toSatoshis, toCoins } from './utils/index.js';
 
 // Constants
 export {
@@ -62,6 +84,7 @@ export {
 export type { Network } from './constants/index.js';
 
 // Submodules for power users
+export * as address from './address/index.js';
 export * as keys from './keys/index.js';
 export * as signing from './signing/index.js';
 export * as utxo from './utxo/index.js';

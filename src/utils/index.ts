@@ -48,6 +48,16 @@ export function iAddressToHash(iAddress: string): Buffer {
   return Buffer.from(hash);
 }
 
+/** Convert coin units to satoshis */
+export function toSatoshis(coins: number): number {
+  return Math.round(coins * 1e8);
+}
+
+/** Convert satoshis to coin units */
+export function toCoins(satoshis: number): number {
+  return satoshis / 1e8;
+}
+
 /**
  * Convert an R-address or P2SH address to a scriptPubKey Buffer
  */
