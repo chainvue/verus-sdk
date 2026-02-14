@@ -10,6 +10,10 @@
  * 3. A currency definition output (EVAL_CURRENCY_DEFINITION)
  */
 
+// Re-export classification utilities
+export { classifyCurrency, CURRENCY_TYPE_ORDER } from './classify.js';
+export type { CurrencyType } from './classify.js';
+
 import { TransactionBuilder, smarttxs } from '@bitgo/utxo-lib';
 import { Identity, IdentityScript } from 'verus-typescript-primitives';
 import BN from 'bn.js';

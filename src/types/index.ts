@@ -337,3 +337,60 @@ export interface VerifyMessageResult {
   blockHeight: number;
   version: number;
 }
+
+// ─── Shared Domain Types ─────────────────────────────
+
+/** Re-export CurrencyType from currency/classify */
+export type { CurrencyType } from '../currency/classify.js';
+
+/** Balance for a single currency on an address */
+export interface CurrencyBalance {
+  currencyId: string;
+  currencyName: string;
+  ticker: string;
+  confirmed: number;
+  unconfirmed: number;
+  total: number;
+  type: import('../currency/classify.js').CurrencyType;
+}
+
+/** Direction of a transaction relative to the queried address */
+export type TransactionDirection = 'received' | 'sent';
+
+/** A single transaction in history */
+export interface Transaction {
+  txid: string;
+  direction: TransactionDirection;
+  /** Amount in coin units (not satoshis) */
+  amount: number;
+  confirmations: number;
+  /** Unix timestamp in seconds */
+  timestamp: number;
+  blockHeight: number;
+}
+
+/** Parsed VerusID identity */
+export interface VerusIdentity {
+  /** i-address */
+  id: string;
+  name: string;
+  fullyQualifiedName: string;
+  primaryAddresses: string[];
+  minSignatures: number;
+  revocationAuthority: string;
+  recoveryAuthority: string;
+  status: 'active' | 'revoked' | 'locked' | 'pending';
+  contentMap: Record<string, string>;
+  blockHeight: number;
+}
+
+/** Conversion estimate result */
+export interface ConversionQuote {
+  fromCurrency: string;
+  toCurrency: string;
+  fromAmount: number;
+  toAmount: number;
+  estimatedOutput: number;
+  fee: number;
+  via?: string;
+}
