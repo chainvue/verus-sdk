@@ -150,7 +150,7 @@ export function sendCurrency(
 
   const requiredCurrencies = new Map<string, number>();
   for (const out of params.outputs) {
-    if (out.currency !== systemId && !out.convertTo) {
+    if (out.currency !== systemId) {
       const amount = parseInt(out.satoshis, 10);
       requiredCurrencies.set(
         out.currency,
