@@ -25,7 +25,7 @@ importers:
         specifier: github:VerusCoin/bitcoin-ops
         version: https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd(patch_hash=e3rte2ei7t37ob6gj563hohxna)
       bn.js:
-        specifier: ^5.2.1
+        specifier: ^5.2.2
         version: 5.2.2
       bs58check:
         specifier: ^2.1.2
@@ -37,7 +37,7 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       tiny-secp256k1:
-        specifier: ^2.2.3
+        specifier: ^2.2.4
         version: 2.2.4
       verus-typescript-primitives:
         specifier: github:VerusCoin/verus-typescript-primitives
@@ -47,7 +47,7 @@ importers:
         version: 4.0.0
     devDependencies:
       '@types/bn.js':
-        specifier: ^5.1.5
+        specifier: ^5.2.0
         version: 5.2.0
       '@types/bs58check':
         specifier: ^2.1.2
@@ -56,13 +56,13 @@ importers:
         specifier: ^1.2.6
         version: 1.2.6
       '@types/node':
-        specifier: ^20.0.0
+        specifier: ^20.19.33
         version: 20.19.33
       typescript:
-        specifier: ^5.3.0
+        specifier: ^5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^1.0.0
+        specifier: ^1.6.1
         version: 1.6.1(@types/node@20.19.33)
 
 packages:
@@ -412,8 +412,8 @@ packages:
     resolution: {integrity: sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==}
     engines: {node: '>= 0.4'}
 
-  b4a@1.7.3:
-    resolution: {integrity: sha512-5Q2mfq2WfGuFp3uS//0s6baOJLMoVduPYVeNmDYxu5OUA1/cBfvr2RIS7vi62LdNj/urk1hfmj867I3qt6uZ7Q==}
+  b4a@1.7.4:
+    resolution: {integrity: sha512-u20zJLDaSWpxaZ+zaAkEIB2dZZ1o+DF4T/MRbmsvGp9nletHOyiai19OzX1fF8xUBYsO1bPXxODvcd0978pnug==}
     peerDependencies:
       react-native-b4a: '*'
     peerDependenciesMeta:
@@ -919,6 +919,10 @@ packages:
     resolution: {tarball: https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e}
     version: 1.0.0
 
+  verus-typescript-primitives@https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/429f3ac42103da38fbd577ba7cd3fd2e74592b1c:
+    resolution: {tarball: https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/429f3ac42103da38fbd577ba7cd3fd2e74592b1c}
+    version: 1.0.0
+
   vite-node@1.6.1:
     resolution: {integrity: sha512-YAXkfvGtuTzwWbDSACdJSg4A4DZiAqckWe90Zapc/sEX3XvHcw1NdurM/6od8J207tSDqNbSsgdCacBgvJKFuA==}
     engines: {node: ^18.0.0 || >=20.0.0}
@@ -1038,7 +1042,7 @@ snapshots:
       safe-buffer: 5.0.1
       typeforce: 1.11.3
       varuint-bitcoin: 1.0.4
-      verus-typescript-primitives: https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e
+      verus-typescript-primitives: https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/429f3ac42103da38fbd577ba7cd3fd2e74592b1c
       wif: 2.0.1
     transitivePeerDependencies:
       - react-native-b4a
@@ -1265,7 +1269,7 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
-  b4a@1.7.3: {}
+  b4a@1.7.4: {}
 
   base-x@1.1.0: {}
 
@@ -1300,7 +1304,7 @@ snapshots:
 
   blake2b-wasm@2.4.0:
     dependencies:
-      b4a: 1.7.3
+      b4a: 1.7.4
       nanoassert: 2.0.0
     transitivePeerDependencies:
       - react-native-b4a
@@ -1826,6 +1830,17 @@ snapshots:
   varuint-bitcoin@1.0.4: {}
 
   verus-typescript-primitives@https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e:
+    dependencies:
+      base64url: 3.0.1
+      bech32: 2.0.0
+      blake2b: https://codeload.github.com/VerusCoin/blake2b/tar.gz/578dc12b7b68a3ce76d1e1add1402b28a5890a6b
+      bn.js: 5.2.1
+      bs58check: 2.0.0
+      create-hash: 1.2.0
+    transitivePeerDependencies:
+      - react-native-b4a
+
+  verus-typescript-primitives@https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/429f3ac42103da38fbd577ba7cd3fd2e74592b1c:
     dependencies:
       base64url: 3.0.1
       bech32: 2.0.0
