@@ -2,3 +2,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 .DS_Store
+
+# Real credentials never enter the repo
+.env
+.env.*
+!.env.example
