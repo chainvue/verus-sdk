@@ -1,0 +1,117 @@
+# Release — publish @chainvue/verus-typescript-sdk to npm via OIDC trusted
+# publishing. Same trigger model as chainvue/verus-rpc: MANUAL
+# workflow_dispatch on main; the release event is the version-bump commit.
+#
+# One-time prerequisite: trusted-publisher registration on npmjs.com for
+# @chainvue/verus-typescript-sdk (repo chainvue/verus-typescript-sdk,
+# workflow release.yml). No npm tokens anywhere.
+#
+# The from-registry smoke deliberately runs under PLAIN NODE, not vitest —
+# the primitives split-brain incident proved vitest's resolver can mask
+# broken consumer installs (RISKS.md, P1 final).
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: build, test and pack, but do not publish"
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # OIDC token for npm trusted publishing
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build + bundle + test (prepublishOnly gate)
+        run: pnpm run clean && pnpm run build && pnpm run bundle && pnpm run test
+
+      - name: Publish
+        run: >-
+          pnpm publish --no-git-checks
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+
+  smoke:
+    needs: release
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          package-manager-cache: false
+
+      - name: Resolve version
+        id: v
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for registry
+        run: |
+          for i in $(seq 1 30); do
+            if npm view "@chainvue/verus-typescript-sdk@${{ steps.v.outputs.version }}" version >/dev/null 2>&1; then
+              echo "available"; exit 0
+            fi
+            echo "waiting ($i)"; sleep 5
+          done
+          echo "version never appeared on registry"; exit 1
+
+      - name: Install from registry into a fresh project (PLAIN NODE consumer probe)
+        run: |
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          npm init -y >/dev/null
+          npm install "@chainvue/verus-typescript-sdk@${{ steps.v.outputs.version }}"
+
+      - name: Keygen + offline transfer build + validate under plain node
+        run: |
+          cd /tmp/smoke
+          cat > smoke.cjs <<'EOF2'
+          const { VerusSDK } = require("@chainvue/verus-typescript-sdk");
+          const sdk = new VerusSDK({ network: "testnet" });
+          const wif = VerusSDK.generateWif();
+          VerusSDK.deriveAddress(wif).then((address) => {
+            const { utils } = require("@chainvue/verus-typescript-sdk");
+            const script = utils.addressToScriptPubKey(address).toString("hex");
+            const result = sdk.transfer({
+              wif,
+              to: address,
+              amount: 90_000_000,
+              utxos: [{ txid: "ab".repeat(32), outputIndex: 0, satoshis: 100_000_000, script }],
+              changeAddress: address,
+            });
+            if (!/^[0-9a-f]+$/.test(result.signedTx)) throw new Error("no signed hex");
+            const summary = utils.summarizeSignedTransaction(result.signedTx, "testnet");
+            if (summary.txid !== result.txid) throw new Error("txid mismatch");
+            console.log("smoke ok:", result.txid);
+          }).catch((err) => { console.error(err); process.exit(1); });
+          EOF2
+          node smoke.cjs

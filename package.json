@@ -24,8 +24,7 @@
     "url": "https://github.com/chainvue/verus-typescript-sdk.git"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
-    "access": "restricted"
+    "access": "public"
   },
   "dependencies": {
     "@bitgo/utxo-lib": "github:VerusCoin/BitGoJS#utxo-lib-verus",
