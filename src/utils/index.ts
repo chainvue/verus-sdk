@@ -86,3 +86,51 @@ export function addressToScriptPubKey(address: string): Buffer {
     );
   }
 }
+
+// ─── Signed-transaction summary (consumer-facing) ────────────────────────
+
+/** One consumed input of a signed transaction, in `txid`/`vout` form. */
+export interface DecodedInput {
+  txid: string;
+  vout: number;
+}
+
+/** One output of a signed transaction. `address` is null for smart outputs. */
+export interface DecodedOutput {
+  valueSat: number;
+  scriptHex: string;
+  /** Base58 address when the script is plain P2PKH/P2SH, else null. */
+  address: string | null;
+}
+
+/**
+ * Decode a signed transaction hex into the facts a wallet ledger needs:
+ * txid, the exact outpoints consumed, and the outputs (with addresses where
+ * the script is plain P2PKH/P2SH). Wallets use this to record spent
+ * outpoints and locate their own change output without re-implementing
+ * transaction parsing.
+ */
+export function summarizeSignedTransaction(
+  hex: string,
+  network: 'mainnet' | 'testnet'
+): { txid: string; inputs: DecodedInput[]; outputs: DecodedOutput[] } {
+  // Lazy require keeps utils' import graph light for non-tx consumers.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Transaction, address: addressLib, networks } = require('@bitgo/utxo-lib');
+  const net = network === 'testnet' ? networks.verustest : networks.verus;
+  const tx = Transaction.fromHex(hex, net);
+  const inputs: DecodedInput[] = tx.ins.map((input: { hash: Buffer; index: number }) => ({
+    txid: Buffer.from(input.hash).reverse().toString('hex'),
+    vout: input.index,
+  }));
+  const outputs: DecodedOutput[] = tx.outs.map((out: { script: Buffer; value: number }) => {
+    let addr: string | null = null;
+    try {
+      addr = addressLib.fromOutputScript(out.script, net);
+    } catch {
+      addr = null; // smart output (CC script) — no plain address form
+    }
+    return { valueSat: out.value, scriptHex: out.script.toString('hex'), address: addr };
+  });
+  return { txid: tx.getId(), inputs, outputs };
+}
