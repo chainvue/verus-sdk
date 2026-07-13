@@ -1,4 +1,4 @@
-# @chainvue/verus-typescript-sdk
+# @chainvue/verus-sdk
 
 **100% offline Verus transaction signing.** Build and sign Verus
 transactions — native transfers, token/currency transfers, conversions,
@@ -13,7 +13,7 @@ wire format is the daemon's, not a reimplementation.
 ## Install
 
 ```bash
-npm install @chainvue/verus-typescript-sdk
+npm install @chainvue/verus-sdk
 ```
 
 The published package is a **self-contained bundle**: the VerusCoin forks
@@ -29,7 +29,7 @@ dependencies (`tiny-secp256k1`, `ecpair`, `bs58check`, `bn.js`,
 ## Usage
 
 ```ts
-import { VerusSDK } from '@chainvue/verus-typescript-sdk';
+import { VerusSDK } from '@chainvue/verus-sdk';
 
 const sdk = new VerusSDK({ network: 'testnet' }); // or 'mainnet'
 
@@ -44,7 +44,7 @@ const result = sdk.transfer({
 // broadcast result.signedTx via your own RPC (e.g. verus-rpc sendrawtransaction)
 
 // Decode a signed tx for a wallet ledger:
-import { utils } from '@chainvue/verus-typescript-sdk';
+import { utils } from '@chainvue/verus-sdk';
 const summary = utils.summarizeSignedTransaction(result.signedTx, 'testnet');
 // { txid, inputs: [{txid, vout}], outputs: [{valueSat, scriptHex, address}] }
 ```

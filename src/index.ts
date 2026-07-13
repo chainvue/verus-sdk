@@ -1,5 +1,5 @@
 /**
- * @chainvue/verus-typescript-sdk
+ * @chainvue/verus-sdk
  *
  * 100% offline, fully typed TypeScript SDK for Verus transaction signing.
  */

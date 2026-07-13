@@ -1,5 +1,5 @@
 {
-  "name": "@chainvue/verus-typescript-sdk",
+  "name": "@chainvue/verus-sdk",
   "version": "0.4.0",
   "description": "100% offline, fully typed TypeScript SDK for Verus transaction signing",
   "main": "dist/bundle.js",

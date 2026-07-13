@@ -1,5 +1,5 @@
 /**
- * Shared test fixtures and helpers for verus-typescript-sdk tests
+ * Shared test fixtures and helpers for verus-sdk tests
  *
  * Extracts commonly duplicated test data and helper functions
  * so individual test files stay DRY.

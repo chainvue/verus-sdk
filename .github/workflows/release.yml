@@ -1,9 +1,9 @@
-# Release — publish @chainvue/verus-typescript-sdk to npm via OIDC trusted
+# Release — publish @chainvue/verus-sdk to npm via OIDC trusted
 # publishing. Same trigger model as chainvue/verus-rpc: MANUAL
 # workflow_dispatch on main; the release event is the version-bump commit.
 #
 # One-time prerequisite: trusted-publisher registration on npmjs.com for
-# @chainvue/verus-typescript-sdk (repo chainvue/verus-typescript-sdk,
+# @chainvue/verus-sdk (repo chainvue/verus-typescript-sdk,
 # workflow release.yml). No npm tokens anywhere.
 #
 # The from-registry smoke deliberately runs under PLAIN NODE, not vitest —
@@ -78,7 +78,7 @@ jobs:
       - name: Wait for registry
         run: |
           for i in $(seq 1 30); do
-            if npm view "@chainvue/verus-typescript-sdk@${{ steps.v.outputs.version }}" version >/dev/null 2>&1; then
+            if npm view "@chainvue/verus-sdk@${{ steps.v.outputs.version }}" version >/dev/null 2>&1; then
               echo "available"; exit 0
             fi
             echo "waiting ($i)"; sleep 5
@@ -89,17 +89,17 @@ jobs:
         run: |
           mkdir -p /tmp/smoke && cd /tmp/smoke
           npm init -y >/dev/null
-          npm install "@chainvue/verus-typescript-sdk@${{ steps.v.outputs.version }}"
+          npm install "@chainvue/verus-sdk@${{ steps.v.outputs.version }}"
 
       - name: Keygen + offline transfer build + validate under plain node
         run: |
           cd /tmp/smoke
           cat > smoke.cjs <<'EOF2'
-          const { VerusSDK } = require("@chainvue/verus-typescript-sdk");
+          const { VerusSDK } = require("@chainvue/verus-sdk");
           const sdk = new VerusSDK({ network: "testnet" });
           const wif = VerusSDK.generateWif();
           VerusSDK.deriveAddress(wif).then((address) => {
-            const { utils } = require("@chainvue/verus-typescript-sdk");
+            const { utils } = require("@chainvue/verus-sdk");
             const script = utils.addressToScriptPubKey(address).toString("hex");
             const result = sdk.transfer({
               wif,

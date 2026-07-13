@@ -1,5 +1,5 @@
 /**
- * Public type definitions for @chainvue/verus-typescript-sdk
+ * Public type definitions for @chainvue/verus-sdk
  */
 
 import type { Network } from '../constants/index.js';
