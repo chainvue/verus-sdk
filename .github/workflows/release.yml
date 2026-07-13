@@ -3,7 +3,7 @@
 # workflow_dispatch on main; the release event is the version-bump commit.
 #
 # One-time prerequisite: trusted-publisher registration on npmjs.com for
-# @chainvue/verus-sdk (repo chainvue/verus-typescript-sdk,
+# @chainvue/verus-sdk (repo chainvue/verus-sdk,
 # workflow release.yml). No npm tokens anywhere.
 #
 # The from-registry smoke deliberately runs under PLAIN NODE, not vitest —
