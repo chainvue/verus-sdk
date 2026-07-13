@@ -5,6 +5,7 @@
 import { createHash } from 'crypto';
 import bs58check from 'bs58check';
 import { fromBase58Check } from 'verus-typescript-primitives';
+import { NETWORK_CONFIG } from '../constants/index.js';
 
 /**
  * SHA256d (double SHA-256) of one or more buffers
@@ -116,8 +117,10 @@ export function summarizeSignedTransaction(
 ): { txid: string; inputs: DecodedInput[]; outputs: DecodedOutput[] } {
   // Lazy require keeps utils' import graph light for non-tx consumers.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { Transaction, address: addressLib, networks } = require('@bitgo/utxo-lib');
+  const { Transaction, address: addressLib, networks, smarttxs } = require('@bitgo/utxo-lib');
   const net = network === 'testnet' ? networks.verustest : networks.verus;
+  const chainId: string =
+    network === 'testnet' ? NETWORK_CONFIG.testnet.chainId : NETWORK_CONFIG.mainnet.chainId;
   const tx = Transaction.fromHex(hex, net);
   const inputs: DecodedInput[] = tx.ins.map((input: { hash: Buffer; index: number }) => ({
     txid: Buffer.from(input.hash).reverse().toString('hex'),
@@ -128,7 +131,22 @@ export function summarizeSignedTransaction(
     try {
       addr = addressLib.fromOutputScript(out.script, net);
     } catch {
-      addr = null; // smart output (CC script) — no plain address form
+      // Smart CC output. Recover the address ONLY for pure payment outputs
+      // (all OptCCParams are EVAL_NONE, exactly one destination — e.g. P2ID
+      // change back to an identity). Structural outputs (name commitments,
+      // identity definitions, reservations) deliberately stay null: callers
+      // like the registration flow LOCATE them by address === null.
+      try {
+        const unpacked = smarttxs.unpackOutput({ script: out.script, value: out.value }, chainId);
+        const evalCodes: number[] = ((unpacked.params ?? []) as Array<{ eval: number }>).map(
+          (p) => p.eval,
+        );
+        if (unpacked.destinations.length === 1 && evalCodes.every((code) => code === 0)) {
+          addr = unpacked.destinations[0] as string;
+        }
+      } catch {
+        addr = null; // exotic CC output — no address form
+      }
     }
     return { valueSat: out.value, scriptHex: out.script.toString('hex'), address: addr };
   });
