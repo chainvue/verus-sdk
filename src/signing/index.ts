@@ -31,17 +31,34 @@ export function getNetwork(testnet: boolean = false): VerusNetwork {
 
 /**
  * Sign a pre-built transaction hex with a single WIF key
+ *
+ * `maxFeeSats`: utxo-lib's TransactionBuilder enforces a last-resort fee-RATE
+ * cap (default 2500 sat/vbyte) at build() and throws "Transaction has absurd
+ * fees" above it. An identity registration intentionally burns the protocol
+ * fee (~100 native) as an implicit miner fee — far above any sane rate cap —
+ * so callers that KNOW their intended absolute fee pass it here. It is
+ * converted into a rate bound using the unsigned hex size as a lower bound of
+ * the final vsize (signatures only grow a tx), so the guard still trips if
+ * the actual fee materially exceeds the declared one.
  */
 export function signTransactionSmart(
   txHex: string,
   wif: string,
   utxos: Utxo[],
-  network: VerusNetwork = networks.verus
+  network: VerusNetwork = networks.verus,
+  maxFeeSats?: number
 ): { signedTx: string; txid: string } {
   const keyPair = ECPair.fromWIF(wif, network);
   const prevOutScripts = utxos.map((u) => Buffer.from(u.script, 'hex'));
 
   const txb = getFundedTxBuilder(txHex, network, prevOutScripts);
+  if (maxFeeSats !== undefined) {
+    // The fork's .d.ts omits maximumFeeRate, but it exists at runtime
+    // (transaction_builder.js: `this.maximumFeeRate = maximumFeeRate || 2500`).
+    (txb as { maximumFeeRate?: number }).maximumFeeRate = Math.ceil(
+      maxFeeSats / (txHex.length / 2),
+    );
+  }
 
   for (let i = 0; i < utxos.length; i++) {
     txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, utxos[i].satoshis);

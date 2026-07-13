@@ -321,6 +321,42 @@ describe('buildAndSignRegistration', () => {
     expect(result.fee).toBeGreaterThan(0);
   });
 
+  // ─── Regression: E6 live failure ──────────────────
+  // utxo-lib's TransactionBuilder.build() enforces a last-resort fee-rate cap
+  // (default 2500 sat/vbyte) with a check that 32-bit-truncates input values
+  // (`x.value >>> 0`). A registration funded by a ~101-coin UTXO (the real
+  // E6 live scenario) computed a huge positive "fee" and threw "Transaction
+  // has absurd fees" at BUILD time — while these unit tests' 200-coin UTXO
+  // happened to truncate into a NEGATIVE fee and passed. The builder now
+  // declares the intended absolute fee, converted to a rate bound.
+  it('regression: builds with a funding UTXO just above the registration fee (E6 live shape)', () => {
+    const { commitmentData, commitmentUtxo } =
+      createMockRegistrationInputs('e6regression');
+
+    // The live failure: 101 coins funded, minus commitment tx fee.
+    const liveShapeUtxo: Utxo = {
+      txid: 'ee'.repeat(32),
+      outputIndex: 0,
+      satoshis: 10_099_990_000,
+      script: TEST_SCRIPT,
+    };
+
+    const result = buildAndSignRegistration(
+      {
+        wif: TEST_WIF,
+        commitmentUtxo,
+        commitmentData,
+        primaryAddresses: [TEST_ADDRESS],
+        utxos: [liveShapeUtxo],
+        changeAddress: TEST_ADDRESS,
+      },
+      NETWORK,
+    );
+
+    expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
+    expect(result.registrationFee).toBe(DEFAULT_REGISTRATION_FEE);
+  });
+
   // ─── Custom fee parameters ────────────────────────
 
   it('should respect custom registrationFee and referralLevels', () => {

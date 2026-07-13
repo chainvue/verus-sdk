@@ -730,11 +730,21 @@ function _buildVrscRegistration(
   const unsignedTx = txb.buildIncomplete();
   const allUtxos: Utxo[] = [commitUtxo, ...selection.selected];
 
+  // The registration fee is burned as an IMPLICIT miner fee (identity and
+  // reservation outputs carry 0; referral payouts come out of the total) —
+  // this matches on-chain registrations, and the daemon exempts recognized
+  // identity definitions from its absurd-fee check (IS_HIGH_FEE). utxo-lib's
+  // client-side fee-rate cap (default 2500 sat/vbyte) must be told the
+  // intended absolute fee or build() throws "Transaction has absurd fees".
+  const expectedImplicitFee =
+    commitUtxo.satoshis + totalFee - totalReferralPayments + selection.fee;
+
   const { signedTx, txid } = signTransactionSmart(
     unsignedTx.toHex(),
     params.wif,
     allUtxos,
     network,
+    expectedImplicitFee,
   );
 
   return {
