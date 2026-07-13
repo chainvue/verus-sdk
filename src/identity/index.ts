@@ -310,6 +310,16 @@ export function buildP2IDScript(iAddress: string): Buffer {
 }
 
 /**
+ * The standard pay-to-identity output script (CC EVAL_NONE 1-of-1 to an
+ * IdentityID) — byte-identical to what the chain itself produces when paying
+ * an identity (verified against on-chain P2ID outputs). Use this for change
+ * or payment outputs to an i-address.
+ */
+export function identityPaymentScript(iAddress: string): Buffer {
+  return buildReferralPaymentScript(iAddress);
+}
+
+/**
  * Build a CC referral payment output script
  */
 export function buildReferralPaymentScript(iAddress: string): Buffer {

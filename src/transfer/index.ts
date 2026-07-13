@@ -23,7 +23,7 @@ import { NETWORK_CONFIG, VERSION_GROUP_ID } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, validateFundedTransaction } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
-import { buildTokenChangeOutput } from '../identity/index.js';
+import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { addressToScriptPubKey } from '../utils/index.js';
 import { InvalidWifError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
@@ -196,7 +196,14 @@ export function sendCurrency(
   }
 
   if (selection.nativeChange > 0) {
-    txb.addOutput(params.changeAddress, selection.nativeChange);
+    // utxo-lib's addOutput only resolves base58 R-addresses; identity
+    // change (an i-address changeAddress) needs the explicit P2ID script —
+    // byte-identical to the chain's own pay-to-identity outputs.
+    if (params.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(params.changeAddress), selection.nativeChange);
+    } else {
+      txb.addOutput(params.changeAddress, selection.nativeChange);
+    }
   }
 
   const unsignedTx = txb.buildIncomplete();
