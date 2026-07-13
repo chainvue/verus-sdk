@@ -21,7 +21,7 @@ import BN from 'bn.js';
 import bs58check from 'bs58check';
 import { NETWORK_CONFIG, VERSION_GROUP_ID } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { signTransactionSmart, getNetwork } from '../signing/index.js';
+import { signTransactionSmart, getNetwork, validateFundedTransaction } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { buildTokenChangeOutput } from '../identity/index.js';
 import { addressToScriptPubKey } from '../utils/index.js';
@@ -206,6 +206,24 @@ export function sendCurrency(
     selection.selected,
     verusNetwork,
   );
+
+  // Defense in depth: utxo-lib's own funded-transfer validator re-checks the
+  // assembled tx against the unfunded intent (value conservation per
+  // currency, change to the declared change address, fee sanity). A
+  // selection/change bug here means money — refuse to hand out the hex.
+  const validation = validateFundedTransaction(
+    systemId,
+    signedTx,
+    unfundedTxHex,
+    params.changeAddress,
+    verusNetwork,
+    selection.selected,
+  );
+  if (!validation.valid) {
+    throw new TransactionBuildError(
+      `funded transaction failed validation: ${validation.message ?? 'no reason given'}`,
+    );
+  }
 
   return {
     signedTx,
