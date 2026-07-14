@@ -1,0 +1,55 @@
+# CI — install, build, typecheck, lint, test on every push and PR.
+#
+# Notes:
+# - This is the PR gate. release.yml also runs the same gate on push to main
+#   (before publishing); the overlap on main is intentional and cheap.
+# - pnpm comes from pnpm/action-setup, which reads the `packageManager` field —
+#   the single source of truth for the pnpm version.
+# - Node matrix: the package's runtime floor is Node 18 (engines/README), but
+#   vitest 4's toolchain requires >= 20.19, so 20 is the lowest version the test
+#   job can exercise. 26 is a current release. Node 18 runtime support is
+#   documented, not CI-verified (the runner can't be older than the test tool).
+# - The liveproof* / integration suites gate behind a funded key + VERUS_RPC_URL
+#   and skip automatically — CI has neither.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        node-version: [20, 22, 26]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test (with coverage threshold)
+        run: pnpm test:coverage
