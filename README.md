@@ -21,7 +21,7 @@ const { signedTx, txid, fee } = sdk.transfer({
   utxos: [{ txid, outputIndex, satoshis: 500_000_000n, script }],
   changeAddress: "R…change",
 });
-// broadcast signedTx yourself, e.g. verus-rpc `sendrawtransaction`
+// broadcast signedTx yourself, e.g. @chainvue/verus-rpc `sendrawtransaction`
 ```
 
 **Money is `bigint` satoshis end to end — never a float.** Convert at the edges:
@@ -52,7 +52,7 @@ selection or change bug throws; it never hands you a bad transaction.
   fork packages to install; the type surface for the bundled forks ships with the
   package.
 - **Signing only**: broadcasting, UTXO fetching, and confirmation tracking are
-  yours (see [`verus-rpc`](https://www.npmjs.com/package/verus-rpc)).
+  yours (see [`@chainvue/verus-rpc`](https://www.npmjs.com/package/@chainvue/verus-rpc)).
 - Node ≥ 18. Wire format proven against a live VRSCTEST daemon — see
   [RISKS.md](./RISKS.md).
 
