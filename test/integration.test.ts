@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import { VerusSDK, NETWORK_CONFIG } from '../src/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
@@ -15,7 +16,11 @@ function makeFundingUtxo(address: string, satoshis: number): {
   txid: string; outputIndex: number; satoshis: number; script: string;
 } {
   return {
-    txid: Buffer.alloc(32, Math.floor(Math.random() * 255)).toString('hex'),
+    // A real random 32-byte txid. The previous Buffer.alloc(32, rand)
+    // filled ALL bytes with the same value, so ~1/255 runs produced an
+    // all-zeros txid — the coinbase marker utxo-lib refuses to sign
+    // ("coinbase inputs not supported"). It flaked the release gate in CI.
+    txid: randomBytes(32).toString('hex'),
     outputIndex: 0,
     satoshis,
     script: makeP2PKHScript(address),
