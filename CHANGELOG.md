@@ -1,5 +1,16 @@
 # Changelog
 
+Format follows [Keep a Changelog](https://keepachangelog.com): newest first,
+one section per released version headed `## <version> (<date>) — <summary>`.
+Record changes under **[Unreleased]** as you make them; at release, rename that
+heading to the version. This file is adopter-facing ("what changed, what
+breaks") — design rationale lives in RISKS.md.
+
+## [Unreleased]
+
+<!-- Add entries here in the same commit as the change; rename this heading to
+     the new version at release time. -->
+
 ## 0.4.1 (2026-07-14) — packaging fix
 
 - The inlined VerusCoin forks (@bitgo/utxo-lib, verus-typescript-primitives,
