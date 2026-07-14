@@ -213,7 +213,7 @@ export function selectUtxos(
     actualNativeChange > DUST_THRESHOLD ? fee : fee + actualNativeChange;
 
   return {
-    selected: selected.map(({ currencyValues, ...utxo }) => utxo),
+    selected: selected.map(({ currencyValues: _currencyValues, ...utxo }) => utxo),
     nativeChange: finalNativeChange,
     currencyChanges,
     fee: finalFee,

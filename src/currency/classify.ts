@@ -19,7 +19,7 @@ export function classifyCurrency(currencyInfo: {
   systemid?: string;
   currencyid?: string;
   options?: number;
-  currencies?: any;
+  currencies?: unknown;
 }): CurrencyType {
   if (currencyInfo.systemid === currencyInfo.currencyid) return 'native';
   const opts = currencyInfo.options ?? 0;

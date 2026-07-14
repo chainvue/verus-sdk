@@ -104,7 +104,6 @@ describe.skipIf(!enabled)('ring 3: funded broadcast acceptance (VRSCTEST, SPENDS
           amount: totalIn - fee,
           utxos,
           changeAddress: probeAddress,
-          fee,
         },
         'testnet',
       );

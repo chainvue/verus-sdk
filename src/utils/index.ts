@@ -6,7 +6,7 @@ import { createHash } from 'crypto';
 import bs58check from 'bs58check';
 import { fromBase58Check } from 'verus-typescript-primitives';
 import { NETWORK_CONFIG } from '../constants/index.js';
-import { InvalidAmountError } from '../errors.js';
+import { InvalidAddressError, InvalidAmountError } from '../errors.js';
 
 /**
  * SHA256d (double SHA-256) of one or more buffers
@@ -74,7 +74,7 @@ export function parseSats(decimal: string): bigint {
   if (typeof decimal !== 'string' || !DECIMAL_AMOUNT_RE.test(decimal)) {
     throw new InvalidAmountError(String(decimal));
   }
-  const [whole, fraction = ''] = decimal.split('.');
+  const [whole = '0', fraction = ''] = decimal.split('.');
   return BigInt(whole) * SATS_PER_COIN + BigInt(fraction.padEnd(AMOUNT_DECIMALS, '0'));
 }
 
@@ -121,7 +121,12 @@ export function toSafeNumber(sats: bigint): number {
  * Convert an R-address or P2SH address to a scriptPubKey Buffer
  */
 export function addressToScriptPubKey(address: string): Buffer {
-  const decoded = bs58check.decode(address);
+  let decoded: Uint8Array;
+  try {
+    decoded = bs58check.decode(address);
+  } catch (err) {
+    throw new InvalidAddressError(address, (err as Error).message);
+  }
   const prefix = decoded[0];
   const hash = decoded.slice(1);
 
@@ -140,8 +145,9 @@ export function addressToScriptPubKey(address: string): Buffer {
       Buffer.from([0x87]), // OP_EQUAL
     ]);
   } else {
-    throw new Error(
-      `Unsupported address prefix: 0x${prefix.toString(16)}. Use sendCurrency for i-address destinations.`
+    throw new InvalidAddressError(
+      address,
+      `Unsupported address prefix: 0x${(prefix ?? 0).toString(16)}. Use sendCurrency for i-address destinations.`,
     );
   }
 }
@@ -173,18 +179,20 @@ export function summarizeSignedTransaction(
   hex: string,
   network: 'mainnet' | 'testnet'
 ): { txid: string; inputs: DecodedInput[]; outputs: DecodedOutput[] } {
-  // Lazy require keeps utils' import graph light for non-tx consumers.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { Transaction, address: addressLib, networks, smarttxs } = require('@bitgo/utxo-lib');
+  // Lazy require keeps utils' import graph light for non-tx consumers. The
+  // fork's ambient module declaration (bitgo-utxo-lib.d.ts) types the shape.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deliberate lazy load; see above
+  const utxolib = require('@bitgo/utxo-lib') as typeof import('@bitgo/utxo-lib');
+  const { Transaction, address: addressLib, networks, smarttxs } = utxolib;
   const net = network === 'testnet' ? networks.verustest : networks.verus;
   const chainId: string =
     network === 'testnet' ? NETWORK_CONFIG.testnet.chainId : NETWORK_CONFIG.mainnet.chainId;
   const tx = Transaction.fromHex(hex, net);
-  const inputs: DecodedInput[] = tx.ins.map((input: { hash: Buffer; index: number }) => ({
+  const inputs: DecodedInput[] = tx.ins.map((input) => ({
     txid: Buffer.from(input.hash).reverse().toString('hex'),
     vout: input.index,
   }));
-  const outputs: DecodedOutput[] = tx.outs.map((out: { script: Buffer; value: number }) => {
+  const outputs: DecodedOutput[] = tx.outs.map((out) => {
     let addr: string | null = null;
     try {
       addr = addressLib.fromOutputScript(out.script, net);
@@ -196,11 +204,9 @@ export function summarizeSignedTransaction(
       // like the registration flow LOCATE them by address === null.
       try {
         const unpacked = smarttxs.unpackOutput({ script: out.script, value: out.value }, chainId);
-        const evalCodes: number[] = ((unpacked.params ?? []) as Array<{ eval: number }>).map(
-          (p) => p.eval,
-        );
+        const evalCodes: number[] = (unpacked.params ?? []).map((p) => p.eval);
         if (unpacked.destinations.length === 1 && evalCodes.every((code) => code === 0)) {
-          addr = unpacked.destinations[0] as string;
+          addr = unpacked.destinations[0] ?? null;
         }
       } catch {
         addr = null; // exotic CC output — no address form

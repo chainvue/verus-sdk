@@ -1,28 +1,50 @@
 declare module '@bitgo/utxo-lib' {
   import BN from 'bn.js';
+  import type { TransferDestination } from 'verus-typescript-primitives';
+
+  /**
+   * Runtime shape of a `networks` entry in the Verus fork (networks.js).
+   * Fields verified against `networks.verus` / `networks.verustest` at
+   * runtime; entries for non-PBaaS chains (e.g. `bitcoin`) omit the
+   * Verus/Zcash-specific fields, hence the optionals.
+   */
+  export interface VerusNetworkConfig {
+    messagePrefix: string;
+    bech32?: string;
+    bip32: { public: number; private: number };
+    pubKeyHash: number;
+    scriptHash: number;
+    verusID?: number;
+    wif: number;
+    consensusBranchId?: Record<number, number>;
+    coin: string;
+    isPBaaS?: boolean;
+    isZcashCompatible?: boolean;
+  }
 
   export const networks: {
-    verus: any;
-    verustest: any;
-    bitcoin: any;
-    testnet: any;
-    [key: string]: any;
+    verus: VerusNetworkConfig;
+    verustest: VerusNetworkConfig;
+    bitcoin: VerusNetworkConfig;
+    testnet: VerusNetworkConfig;
+    [key: string]: VerusNetworkConfig;
   };
 
   export class ECPair {
-    static fromWIF(wif: string, network: any): ECPair;
-    static fromPublicKeyBuffer(buffer: Buffer, network?: any): ECPair;
+    static fromWIF(wif: string, network: VerusNetworkConfig): ECPair;
+    static fromPublicKeyBuffer(buffer: Buffer, network?: VerusNetworkConfig): ECPair;
     getPublicKeyBuffer(): Buffer;
-    sign(hash: Buffer): any;
+    /** Returns the fork's ECSignature object — opaque to this SDK. */
+    sign(hash: Buffer): unknown;
     getAddress(): string;
     toWIF(): string;
-    network: any;
+    network: VerusNetworkConfig;
     publicKey: Buffer;
   }
 
   export class Transaction {
     static SIGHASH_ALL: number;
-    static fromHex(hex: string, network?: any): Transaction;
+    static fromHex(hex: string, network?: VerusNetworkConfig): Transaction;
     toHex(): string;
     getId(): string;
     ins: Array<{ hash: Buffer; index: number; script: Buffer; sequence: number }>;
@@ -30,7 +52,7 @@ declare module '@bitgo/utxo-lib' {
   }
 
   export class TransactionBuilder {
-    constructor(network?: any, maxFeeRate?: number);
+    constructor(network?: VerusNetworkConfig, maxFeeRate?: number);
     setVersion(version: number): void;
     setExpiryHeight(height: number): void;
     setVersionGroupId(id: number): void;
@@ -39,31 +61,51 @@ declare module '@bitgo/utxo-lib' {
     sign(vin: number, keyPair: ECPair, redeemScript?: Buffer | null, hashType?: number, witnessValue?: number, witnessScript?: Buffer): void;
     build(): Transaction;
     buildIncomplete(): Transaction;
-    inputs: any[];
+    /**
+     * Last-resort absurd-fee-rate cap in sat/vbyte, enforced at build().
+     * Exists at runtime (transaction_builder.js:
+     * `this.maximumFeeRate = maximumFeeRate || 2500`) but is opaque to this
+     * SDK beyond being assignable.
+     */
+    maximumFeeRate?: number;
+    /** Opaque internal input state — not consumed by this SDK. */
+    inputs: unknown[];
     tx: Transaction;
   }
 
+  /**
+   * One processed OptCCParams entry as returned by `unpackOutput`
+   * (smart_transactions.js `processOptCCParam`). Only `eval` (the eval code)
+   * is consumed by this SDK; the remaining fields (version/m/n/data/values/
+   * fees) stay untyped.
+   */
+  export interface UnpackedOptCCParam {
+    eval: number;
+    [key: string]: unknown;
+  }
+
   export const smarttxs: {
-    unpackOutput(
+    unpackOutput: (
       output: { value: number; script: Buffer },
       systemId: string,
       isInput?: boolean,
       allowNonTransferEvals?: boolean
-    ): {
+    ) => {
       destinations: string[];
       values: Record<string, BN>;
       fees: Record<string, BN>;
       type: string;
-      master?: any;
-      params?: any[];
+      /** Processed master OptCCParams — opaque to this SDK. */
+      master?: unknown;
+      params?: UnpackedOptCCParam[];
     };
 
-    createUnfundedCurrencyTransfer(
+    createUnfundedCurrencyTransfer: (
       systemId: string,
       outputs: Array<{
         currency: string;
         satoshis: string;
-        address: any;
+        address: TransferDestination;
         convertto?: string;
         exportto?: string;
         feecurrency?: string;
@@ -75,26 +117,26 @@ declare module '@bitgo/utxo-lib' {
         mintnew?: boolean;
         importtosource?: boolean;
         bridgeid?: string;
-        refundto?: any;
-        vdxftag?: any;
+        refundto?: TransferDestination;
+        vdxftag?: unknown;
       }>,
-      network: any,
+      network: VerusNetworkConfig,
       expiryHeight?: number,
       version?: number,
       versionGroupId?: number
-    ): string;
+    ) => string;
 
-    createUnfundedIdentityUpdate(
+    createUnfundedIdentityUpdate: (
       identityHex: string,
-      network: any,
+      network: VerusNetworkConfig,
       expiryHeight?: number,
       version?: number,
       versionGroupId?: number
-    ): string;
+    ) => string;
 
-    completeFundedIdentityUpdate(
+    completeFundedIdentityUpdate: (
       fundedTxHex: string,
-      network: any,
+      network: VerusNetworkConfig,
       prevOutScripts: Buffer[],
       prevIdentityOutput: {
         hash: Buffer;
@@ -102,14 +144,19 @@ declare module '@bitgo/utxo-lib' {
         sequence: number;
         script: Buffer;
       }
-    ): string;
+    ) => string;
 
-    validateFundedCurrencyTransfer(
+    /**
+     * Return type covers only what this SDK consumes. At runtime the fork
+     * also returns `in`/`out`/`change`/`fees`/`sent` records whose values
+     * are decimal satoshi STRINGS (BN.toString()).
+     */
+    validateFundedCurrencyTransfer: (
       systemId: string,
       fundedTxHex: string,
       unfundedTxHex: string,
       changeAddr: string,
-      network: any,
+      network: VerusNetworkConfig,
       utxoList: Array<{
         txid: string;
         outputIndex: number;
@@ -117,26 +164,25 @@ declare module '@bitgo/utxo-lib' {
         script: string;
         height: number;
       }>
-    ): {
+    ) => {
       valid: boolean;
       message?: string;
-      in?: Record<string, any>;
-      out?: Record<string, any>;
-      change?: Record<string, any>;
-      fees?: Record<string, any>;
-      sent?: Record<string, any>;
     };
 
-    getFundedTxBuilder(
+    getFundedTxBuilder: (
       txHex: string,
-      network: any,
+      network: VerusNetworkConfig,
       prevOutScripts: Buffer[]
-    ): TransactionBuilder;
+    ) => TransactionBuilder;
+  };
+
+  export const address: {
+    fromOutputScript: (script: Buffer, network: VerusNetworkConfig) => string;
   };
 
   export const script: {
-    compile(chunks: Array<Buffer | number>): Buffer;
-    decompile(buffer: Buffer): Array<Buffer | number> | null;
+    compile: (chunks: Array<Buffer | number>) => Buffer;
+    decompile: (buffer: Buffer) => Array<Buffer | number> | null;
   };
 
   export const opcodes: {
@@ -151,7 +197,7 @@ declare module '@bitgo/utxo-lib' {
 
   export class IdentitySignature {
     constructor(
-      network: any,
+      network: VerusNetworkConfig,
       version?: number,
       hashType?: number,
       blockHeight?: number,
@@ -172,7 +218,7 @@ declare module '@bitgo/utxo-lib' {
     chainId: Buffer | null;
     identity: Buffer | null;
     signatures: Buffer[];
-    network: any;
+    network: VerusNetworkConfig;
   }
 
   export class OptCCParams {
@@ -181,7 +227,7 @@ declare module '@bitgo/utxo-lib' {
       evalCode?: number,
       m?: number,
       n?: number,
-      destinations?: any[],
+      destinations?: TxDestination[],
       serializedObjects?: Buffer[]
     );
     static fromChunk(chunk: Buffer): OptCCParams;
@@ -193,7 +239,7 @@ declare module '@bitgo/utxo-lib' {
     evalCode: number;
     m: number;
     n: number;
-    destinations: any[];
+    destinations: TxDestination[];
     vData: Buffer[];
     error: Error | null;
   }
@@ -210,7 +256,7 @@ declare module '@bitgo/utxo-lib' {
     static TYPE_PKH: number;
     static TYPE_SH: number;
     static TYPE_ID: number;
-    static TYPE_INDEX: number;
     static TYPE_QUANTUM: number;
+    static TYPE_INDEX: number;
   }
 }

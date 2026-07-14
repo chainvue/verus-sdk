@@ -5,7 +5,7 @@
  * so individual test files stay DRY.
  */
 
-import { Identity, IdentityID, KeyID, IdentityScript } from 'verus-typescript-primitives';
+import { IdentityScript } from 'verus-typescript-primitives';
 import BN from 'bn.js';
 import { addressToScriptPubKey } from '../../src/utils/index.js';
 import { NETWORK_CONFIG } from '../../src/constants/index.js';

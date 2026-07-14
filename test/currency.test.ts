@@ -6,8 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { defineCurrency } from '../src/currency/index.js';
-import { IDENTITY_FLAG_ACTIVECURRENCY } from '../src/constants/index.js';
-import { Identity } from 'verus-typescript-primitives';
+import { } from '../src/constants/index.js';
 import {
   TEST_WIF,
   TEST_ADDRESS,

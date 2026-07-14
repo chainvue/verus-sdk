@@ -40,11 +40,10 @@ import {
   DEFAULT_REFERRAL_LEVELS,
   RESERVE_TRANSFER_FEE,
   RESERVE_TRANSFER_EVAL_PKH,
-  IDENTITY_FLAG_ACTIVECURRENCY,
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
-import { signTransactionSmart, getNetwork } from '../signing/index.js';
+import { signTransactionSmart, getNetwork, type VerusNetwork } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
@@ -56,13 +55,6 @@ import type {
   RegisterIdentityResult,
   UpdateIdentityParams,
   UpdateIdentityResult,
-  LockIdentityParams,
-  UnlockIdentityParams,
-  RevokeIdentityParams,
-  RecoverIdentityParams,
-  DefineCurrencyParams,
-  DefineCurrencyResult,
-  CommitmentData,
 } from '../types/index.js';
 
 const { createUnfundedIdentityUpdate, completeFundedIdentityUpdate } = smarttxs;
@@ -391,11 +383,11 @@ export function createIdentityObject(params: {
     flags: new BN(0),
     min_sigs: new BN(params.minSigs || 1),
     primary_addresses: primaryKeys,
-    parent: IdentityID.fromAddress(params.parentIAddress) as IdentityID,
-    system_id: IdentityID.fromAddress(params.systemId) as IdentityID,
+    parent: IdentityID.fromAddress(params.parentIAddress),
+    system_id: IdentityID.fromAddress(params.systemId),
     name: params.name,
-    revocation_authority: IdentityID.fromAddress(params.revocationAuthority) as IdentityID,
-    recovery_authority: IdentityID.fromAddress(params.recoveryAuthority) as IdentityID,
+    revocation_authority: IdentityID.fromAddress(params.revocationAuthority),
+    recovery_authority: IdentityID.fromAddress(params.recoveryAuthority),
     private_addresses: [],
     unlock_after: new BN(0),
   });
@@ -635,7 +627,7 @@ export function buildAndSignRegistration(
   const identity = createIdentityObject({
     name: commitData.name,
     primaryAddresses: params.primaryAddresses,
-    minSigs: params.minSigs,
+    ...(params.minSigs !== undefined ? { minSigs: params.minSigs } : {}),
     revocationAuthority: params.revocationAuthority || identityAddress,
     recoveryAuthority: params.recoveryAuthority || identityAddress,
     parentIAddress,
@@ -663,7 +655,7 @@ function _buildVrscRegistration(
   identityAddress: string,
   parentIAddress: string,
   systemId: string,
-  network: any,
+  network: VerusNetwork,
 ): RegisterIdentityResult {
   const commitData = params.commitmentData;
   const hasReferral = !!commitData.referral;
@@ -772,17 +764,17 @@ function _buildVrscRegistration(
 
 function _buildSubIdRegistration(
   params: RegisterIdentityParams,
-  identity: any,
+  identity: Identity,
   identityScript: Buffer,
   reservationScript: Buffer,
   identityAddress: string,
   parentIAddress: string,
   systemId: string,
-  network: any,
+  network: VerusNetwork,
 ): RegisterIdentityResult {
   const registrationFeeAmount = params.registrationFeeAmount;
   if (!registrationFeeAmount || registrationFeeAmount <= 0n) {
-    throw new Error(
+    throw new TransactionBuildError(
       'registrationFeeAmount is required for sub-ID registration. ' +
       'Specify the fee in parent currency satoshis.'
     );
@@ -948,7 +940,7 @@ export function buildAndSignIdentityUpdate(
     case 'lock': {
       const unlockAfter = lockUnlockParams?.unlockAfter;
       if (!unlockAfter) {
-        throw new Error('unlockAfter (block height) is required for lock operation');
+        throw new TransactionBuildError('unlockAfter (block height) is required for lock operation');
       }
       identity.lock(new BN(unlockAfter));
       break;

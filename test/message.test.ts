@@ -36,8 +36,7 @@ describe('message', () => {
     expect(verifyResult.valid).toBe(true);
   });
 
-  it('should sign and verify a message (v1)', async () => {
-    const signingAddress = await wifToAddress(TEST_WIF);
+  it('should sign and verify a message (v1)', () => {
     const identityAddress = deriveIdentityAddress('testmsg', SYSTEM_ID);
 
     const signResult = signMessage({
@@ -60,8 +59,7 @@ describe('message', () => {
     expect(verifyResult.valid).toBe(true);
   });
 
-  it('should fail verification with wrong message', async () => {
-    const signingAddress = await wifToAddress(TEST_WIF);
+  it('should fail verification with wrong message', () => {
     const identityAddress = deriveIdentityAddress('testmsg', SYSTEM_ID);
 
     const signResult = signMessage({
@@ -82,7 +80,7 @@ describe('message', () => {
     expect(verifyResult.valid).toBe(false);
   });
 
-  it('should fail verification with wrong signing address', async () => {
+  it('should fail verification with wrong signing address', () => {
     const identityAddress = deriveIdentityAddress('testmsg', SYSTEM_ID);
 
     const signResult = signMessage({

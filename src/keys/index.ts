@@ -8,6 +8,7 @@ import * as crypto from 'crypto';
 import bs58check from 'bs58check';
 import createHash from 'create-hash';
 import { PUBKEY_HASH_PREFIX, WIF_PREFIX } from '../constants/index.js';
+import { InvalidWifError } from '../errors.js';
 
 /**
  * Validate a WIF private key
@@ -65,12 +66,12 @@ export async function privateKeyToPublicKey(
   const secp256k1 = await import('tiny-secp256k1');
 
   if (!secp256k1.isPrivate(privateKey)) {
-    throw new Error('Invalid private key');
+    throw new InvalidWifError('Invalid private key');
   }
 
   const publicKey = secp256k1.pointFromScalar(privateKey, compressed);
   if (!publicKey) {
-    throw new Error('Failed to derive public key');
+    throw new InvalidWifError('Failed to derive public key');
   }
 
   return Buffer.from(publicKey);
@@ -99,7 +100,7 @@ export function publicKeyToAddress(publicKey: Buffer): string {
 export async function wifToAddress(wif: string): Promise<string> {
   const validation = validateWif(wif);
   if (!validation.valid) {
-    throw new Error(validation.error);
+    throw new InvalidWifError(validation.error);
   }
 
   const privateKey = wifToPrivateKey(wif);

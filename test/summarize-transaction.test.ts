@@ -69,8 +69,8 @@ describe('summarizeSignedTransaction', () => {
 
     const summary = summarizeSignedTransaction(hex, NETWORK);
     expect(summary.outputs).toHaveLength(1);
-    expect(summary.outputs[0].address).toBe(iAddress);
-    expect(summary.outputs[0].valueSat).toBe(4_000_000n);
+    expect(summary.outputs[0]?.address).toBe(iAddress);
+    expect(summary.outputs[0]?.valueSat).toBe(4_000_000n);
   });
 
   it('keeps STRUCTURAL smart outputs at address null (commitment locator contract)', () => {
@@ -83,6 +83,6 @@ describe('summarizeSignedTransaction', () => {
 
     const summary = summarizeSignedTransaction(hex, NETWORK);
     expect(summary.outputs).toHaveLength(1);
-    expect(summary.outputs[0].address).toBeNull();
+    expect(summary.outputs[0]?.address).toBeNull();
   });
 });

@@ -12,16 +12,13 @@ import {
   convert,
   sendCurrency,
 } from '../src/transfer/index.js';
-import { NETWORK_CONFIG, DUST_THRESHOLD } from '../src/constants/index.js';
 import {
   TEST_WIF,
   TEST_ADDRESS,
   TEST_ADDRESS_B,
-  TEST_SCRIPT,
   VRSCTEST_SYSTEM_ID,
   NETWORK,
   makeFundingUtxo,
-  makeP2PKHScript,
 } from './fixtures/index.js';
 import { deriveIdentityAddress } from '../src/identity/index.js';
 

@@ -21,7 +21,7 @@ import { toSafeNumber } from '../utils/index.js';
 const { getFundedTxBuilder, validateFundedCurrencyTransfer } = smarttxs;
 
 /** Network to use for signing */
-export type VerusNetwork = typeof networks.verus | typeof networks.verustest;
+export type VerusNetwork = typeof networks.verus;
 
 /**
  * Get the Verus network config
@@ -62,7 +62,9 @@ export function signTransactionSmart(
   }
 
   for (let i = 0; i < utxos.length; i++) {
-    txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, toSafeNumber(utxos[i].satoshis));
+    const utxo = utxos[i];
+    if (!utxo) continue;
+    txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, toSafeNumber(utxo.satoshis));
   }
 
   const signedTx = txb.build();
@@ -85,11 +87,13 @@ export function signTransactionMultiKey(
   const txb = getFundedTxBuilder(txHex, network, prevOutScripts);
 
   for (let i = 0; i < keys.length; i++) {
-    if (!keys[i] || keys[i].length === 0) continue;
-    for (const wif of keys[i]) {
+    const inputKeys = keys[i];
+    const utxo = utxos[i];
+    if (!inputKeys || inputKeys.length === 0 || !utxo) continue;
+    for (const wif of inputKeys) {
       if (!wif) continue;
       const keyPair = ECPair.fromWIF(wif, network);
-      txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, toSafeNumber(utxos[i].satoshis));
+      txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, toSafeNumber(utxo.satoshis));
     }
   }
 

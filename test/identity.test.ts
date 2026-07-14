@@ -16,7 +16,6 @@ import {
   prepareNameCommitment,
 } from '../src/identity/index.js';
 import { NETWORK_CONFIG, DEFAULT_REGISTRATION_FEE } from '../src/constants/index.js';
-import { iAddressToHash } from '../src/utils/index.js';
 
 const SYSTEM_ID = NETWORK_CONFIG.testnet.chainId;
 const TEST_ADDR = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';

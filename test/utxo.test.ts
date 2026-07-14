@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { selectUtxos, estimateFee, decodeUtxo } from '../src/utxo/index.js';
+import { selectUtxos, estimateFee } from '../src/utxo/index.js';
 import { NETWORK_CONFIG } from '../src/constants/index.js';
 import type { Utxo } from '../src/types/index.js';
 
@@ -85,7 +85,7 @@ describe('utxo', () => {
       const result = selectUtxos(utxos, 1_000_000n, new Map(), 2, SYSTEM_ID);
       // Should have selected the largest UTXO (50M)
       expect(result.selected.length).toBe(1);
-      expect(result.selected[0].satoshis).toBe(50_000_000n);
+      expect(result.selected[0]?.satoshis).toBe(50_000_000n);
     });
   });
 });

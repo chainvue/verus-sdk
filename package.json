@@ -10,8 +10,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
-    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run bundle && pnpm run test",
-    "bundle": "tsup"
+    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run bundle && pnpm run typecheck && pnpm run lint && pnpm run test",
+    "bundle": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.eslint.json",
+    "lint": "eslint ."
   },
   "keywords": [
     "verus",
@@ -45,7 +47,11 @@
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "verus-typescript-primitives": "github:VerusCoin/verus-typescript-primitives#4243cd075b4f68df1ce72fd2fd9c9b18ac36767e",
-    "vitest": "^1.6.1"
+    "vitest": "^1.6.1",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "typescript-eslint": "^8.63.0"
   },
   "engines": {
     "node": ">=18"

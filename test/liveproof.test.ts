@@ -79,7 +79,6 @@ function buildScenarios(): Scenario[] {
   }
 
   {
-    const inputTotal = 90_000_000n;
     const r = transfer(
       {
         wif: TEST_WIF,

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildAndSign } from '../src/transfer/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
+import { InsufficientFundsError } from '../src/errors.js';
 
 const TEST_WIF = 'UusoQWsobQKUkezgBJa22D9G4t9Avo6k8wD5UUxmmfAEoTN8bawc';
 const TEST_ADDR = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';
@@ -70,7 +71,7 @@ describe('transfer', () => {
           }],
           fee: 10_000n,
         }, 'testnet')
-      ).toThrow('Insufficient funds');
+      ).toThrow(InsufficientFundsError);
     });
   });
 });

@@ -25,11 +25,11 @@ import { signTransactionSmart, getNetwork, validateFundedTransaction } from '../
 import { selectUtxos } from '../utxo/index.js';
 import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { addressToScriptPubKey, toSafeNumber } from '../utils/index.js';
-import { InvalidWifError, TransactionBuildError } from '../errors.js';
+import { InsufficientFundsError, InvalidAddressError, InvalidWifError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
+import type { TransferDestination as TransferDestinationType } from 'verus-typescript-primitives';
 import type {
   Utxo,
-  CurrencyOutput,
   SendCurrencyParams,
   SendCurrencyResult,
   TransferParams,
@@ -62,34 +62,44 @@ function validateAmount(amount: bigint, label: string = 'amount'): void {
   }
 }
 
+/** bs58check-decode an address, rethrowing as a typed InvalidAddressError */
+function decodeBase58Address(address: string): Buffer {
+  try {
+    return Buffer.from(bs58check.decode(address));
+  } catch (err) {
+    throw new InvalidAddressError(address, (err as Error).message);
+  }
+}
+
 /**
  * Parse an address string into a TransferDestination
  */
-function parseAddress(address: string, addressType: string): any {
+function parseAddress(address: string, addressType: string): TransferDestinationType {
   let type: typeof DEST_PKH;
   let destinationBytes: Buffer;
 
   switch (addressType) {
     case 'PKH': {
       type = DEST_PKH;
-      const decoded = bs58check.decode(address);
-      destinationBytes = Buffer.from(decoded.slice(1));
+      destinationBytes = decodeBase58Address(address).slice(1);
       break;
     }
     case 'ID': {
       type = DEST_ID;
-      const decoded = bs58check.decode(address);
-      destinationBytes = Buffer.from(decoded.slice(1));
+      destinationBytes = decodeBase58Address(address).slice(1);
       break;
     }
     case 'ETH': {
       type = DEST_ETH;
       const addr = address.startsWith('0x') ? address.substring(2) : address;
       destinationBytes = Buffer.from(addr, 'hex');
+      if (destinationBytes.length !== 20) {
+        throw new InvalidAddressError(address, 'ETH destination must be 20 bytes of hex');
+      }
       break;
     }
     default:
-      throw new Error(`Unsupported address type: ${addressType}`);
+      throw new InvalidAddressError(address, `Unsupported address type: ${addressType}`);
   }
 
   return new TransferDestination({
@@ -113,6 +123,15 @@ export function sendCurrency(
   if (!params.outputs || params.outputs.length === 0) {
     throw new TransactionBuildError('At least one output is required');
   }
+  for (const out of params.outputs) {
+    validateAmount(out.satoshis, `output satoshis (${out.currency})`);
+    if (out.feeSatoshis !== undefined && out.feeSatoshis < 0n) {
+      throw new TransactionBuildError(`Invalid feeSatoshis: must be non-negative (got ${out.feeSatoshis})`);
+    }
+  }
+  if (!params.changeAddress || typeof params.changeAddress !== 'string') {
+    throw new TransactionBuildError('changeAddress is required');
+  }
   const networkConfig = NETWORK_CONFIG[network];
   const verusNetwork = getNetwork(network === 'testnet');
   const systemId = networkConfig.chainId;
@@ -122,13 +141,13 @@ export function sendCurrency(
     currency: out.currency,
     satoshis: out.satoshis.toString(10),
     address: parseAddress(out.address, out.addressType || 'PKH'),
-    convertto: out.convertTo,
-    exportto: out.exportTo,
-    via: out.via,
-    bridgeid: out.bridgeId,
-    feecurrency: out.feeCurrency,
-    feesatoshis: out.feeSatoshis === undefined ? undefined : out.feeSatoshis.toString(10),
-    preconvert: out.preconvert,
+    ...(out.convertTo !== undefined ? { convertto: out.convertTo } : {}),
+    ...(out.exportTo !== undefined ? { exportto: out.exportTo } : {}),
+    ...(out.via !== undefined ? { via: out.via } : {}),
+    ...(out.bridgeId !== undefined ? { bridgeid: out.bridgeId } : {}),
+    ...(out.feeCurrency !== undefined ? { feecurrency: out.feeCurrency } : {}),
+    ...(out.feeSatoshis !== undefined ? { feesatoshis: out.feeSatoshis.toString(10) } : {}),
+    ...(out.preconvert !== undefined ? { preconvert: out.preconvert } : {}),
   }));
 
   const unfundedTxHex = createUnfundedCurrencyTransfer(
@@ -259,7 +278,7 @@ export function transfer(
     }],
     utxos: params.utxos,
     changeAddress: params.changeAddress,
-    expiryHeight: params.expiryHeight,
+    ...(params.expiryHeight !== undefined ? { expiryHeight: params.expiryHeight } : {}),
   }, network);
 }
 
@@ -281,7 +300,7 @@ export function transferToken(
     }],
     utxos: params.utxos,
     changeAddress: params.changeAddress,
-    expiryHeight: params.expiryHeight,
+    ...(params.expiryHeight !== undefined ? { expiryHeight: params.expiryHeight } : {}),
   }, network);
 }
 
@@ -301,11 +320,11 @@ export function convert(
       address: params.changeAddress, // Conversion output goes to self
       addressType: 'PKH',
       convertTo: params.convertTo,
-      via: params.via,
+      ...(params.via !== undefined ? { via: params.via } : {}),
     }],
     utxos: params.utxos,
     changeAddress: params.changeAddress,
-    expiryHeight: params.expiryHeight,
+    ...(params.expiryHeight !== undefined ? { expiryHeight: params.expiryHeight } : {}),
   }, network);
 }
 
@@ -333,14 +352,22 @@ export function buildAndSign(
 
   const totalInput = params.inputs.reduce((sum, i) => sum + i.amount, 0n);
   const totalOutput = params.outputs.reduce((sum, o) => sum + o.amount, 0n);
-  const fee = params.fee ?? (totalInput - totalOutput);
+  const impliedFee = totalInput - totalOutput;
+  const fee = params.fee ?? impliedFee;
 
   if (totalOutput + fee > totalInput) {
-    throw new Error(`Insufficient funds. Input: ${totalInput}, Output: ${totalOutput}, Fee: ${fee}`);
+    throw new InsufficientFundsError(totalOutput + fee, totalInput);
+  }
+  // Value conservation: every input satoshi is either an output or the
+  // declared fee. A declared fee below the implied one means the difference
+  // would be burned silently as extra miner fee — refuse.
+  if (fee !== impliedFee) {
+    throw new TransactionBuildError(
+      `declared fee ${fee} does not match inputs minus outputs (${impliedFee}) — the difference would be burned`,
+    );
   }
 
-  // Use high maxFeeRate since callers explicitly control input/output amounts
-  const txb = new TransactionBuilder(verusNetwork, Number.MAX_SAFE_INTEGER);
+  const txb = new TransactionBuilder(verusNetwork);
   txb.setVersion(4);
   txb.setExpiryHeight(params.expiryHeight || 0);
   txb.setVersionGroupId(VERSION_GROUP_ID);
@@ -368,11 +395,14 @@ export function buildAndSign(
     script: i.scriptPubKey,
   }));
 
+  // The absurd-fee check runs at signing time; bound it to the fee this
+  // transaction actually declares instead of disabling it.
   const { signedTx, txid } = signTransactionSmart(
     unsignedTx.toHex(),
     params.wif,
     utxos,
     verusNetwork,
+    fee > 0n ? fee : undefined,
   );
 
   return { signedTx, txid, fee };
