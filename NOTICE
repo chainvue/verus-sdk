@@ -1,0 +1,31 @@
+@chainvue/verus-sdk
+Copyright (c) 2026 Robert Lech
+
+Licensed under the Apache License, Version 2.0.
+
+This product bundles (inlines into its published artifact, dist/bundle.js)
+the following third-party software:
+
+1. @bitgo/utxo-lib — Verus fork of BitGoJS utxo-lib
+   Source: https://github.com/VerusCoin/BitGoJS (branch utxo-lib-verus,
+   pinned to commit 9701df63b479984f27680348f9671c2d40025a90)
+   Copyright (c) 2011-2017 bitcoinjs-lib contributors; BitGo Inc. and
+   contributors; Verus modifications by the VerusCoin developers.
+   License: MIT (the package ships the bitcoinjs-lib MIT license text)
+
+2. verus-typescript-primitives
+   Source: https://github.com/VerusCoin/verus-typescript-primitives
+   Copyright (c) the VerusCoin developers.
+   License: MIT
+
+3. bitcoin-ops — Verus fork (adds Verus eval codes)
+   Source: https://github.com/VerusCoin/bitcoin-ops
+   Copyright (c) the original bitcoin-ops authors and the VerusCoin
+   developers.
+   License: MIT
+
+The upstream utxo-lib lineage additionally includes code derived from
+bitcoinjs-lib (https://github.com/bitcoinjs/bitcoinjs-lib, MIT).
+
+Regular npm dependencies (bn.js, bs58check, create-hash, ecpair,
+tiny-secp256k1, wif) are not bundled; they install under their own licenses.

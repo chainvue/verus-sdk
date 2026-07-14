@@ -19,7 +19,7 @@
     "offline-signing",
     "typescript"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/chainvue/verus-sdk.git"
@@ -36,12 +36,12 @@
     "wif": "^4.0.0"
   },
   "devDependencies": {
-    "@bitgo/utxo-lib": "github:VerusCoin/BitGoJS#utxo-lib-verus",
+    "@bitgo/utxo-lib": "github:VerusCoin/BitGoJS#9701df63b479984f27680348f9671c2d40025a90",
     "@types/bn.js": "^5.2.0",
     "@types/bs58check": "^2.1.2",
     "@types/create-hash": "^1.2.6",
     "@types/node": "^20.19.33",
-    "bitcoin-ops": "github:VerusCoin/bitcoin-ops",
+    "bitcoin-ops": "github:VerusCoin/bitcoin-ops#a5f8f56e658301bc39881d41740b3a0010530efd",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "verus-typescript-primitives": "github:VerusCoin/verus-typescript-primitives#4243cd075b4f68df1ce72fd2fd9c9b18ac36767e",
@@ -51,12 +51,14 @@
     "node": ">=18"
   },
   "files": [
-    "dist/**/*"
+    "dist/**/*",
+    "NOTICE",
+    "LICENSE"
   ],
   "packageManager": "pnpm@9.15.0",
   "pnpm": {
     "overrides": {
-      "bitcoin-ops": "github:VerusCoin/bitcoin-ops",
+      "bitcoin-ops": "github:VerusCoin/bitcoin-ops#a5f8f56e658301bc39881d41740b3a0010530efd",
       "verus-typescript-primitives": "github:VerusCoin/verus-typescript-primitives#4243cd075b4f68df1ce72fd2fd9c9b18ac36767e"
     },
     "patchedDependencies": {

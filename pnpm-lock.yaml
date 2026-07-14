@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  bitcoin-ops: github:VerusCoin/bitcoin-ops
+  bitcoin-ops: github:VerusCoin/bitcoin-ops#a5f8f56e658301bc39881d41740b3a0010530efd
   verus-typescript-primitives: github:VerusCoin/verus-typescript-primitives#4243cd075b4f68df1ce72fd2fd9c9b18ac36767e
 
 pnpmfileChecksum: 7qmyw3zlnn2v6m5naqs37lrlqa
@@ -39,7 +39,7 @@ importers:
         version: 4.0.0
     devDependencies:
       '@bitgo/utxo-lib':
-        specifier: github:VerusCoin/BitGoJS#utxo-lib-verus
+        specifier: github:VerusCoin/BitGoJS#9701df63b479984f27680348f9671c2d40025a90
         version: https://codeload.github.com/VerusCoin/BitGoJS/tar.gz/9701df63b479984f27680348f9671c2d40025a90
       '@types/bn.js':
         specifier: ^5.2.0
@@ -54,7 +54,7 @@ importers:
         specifier: ^20.19.33
         version: 20.19.33
       bitcoin-ops:
-        specifier: github:VerusCoin/bitcoin-ops
+        specifier: github:VerusCoin/bitcoin-ops#a5f8f56e658301bc39881d41740b3a0010530efd
         version: https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd(patch_hash=e3rte2ei7t37ob6gj563hohxna)
       tsup:
         specifier: ^8.5.1
@@ -621,9 +621,6 @@ packages:
 
   bip66@1.1.0:
     resolution: {integrity: sha512-dBoAPJYg6HaaQeJGr4cNiqat1meGzlrv2qX+EJcW5q0zEdryMSLKlQKdTaCtDnrzEUPkwmlYqsD7ANaye4BEfg==}
-
-  bitcoin-ops@1.4.1:
-    resolution: {integrity: sha512-pef6gxZFztEhaE9RY9HmWVmiIHqCb2OyS4HPKkpc6CIiiOa3Qmuoylxc5P2EkU3w+5eTSifI9SEZC88idAIGow==}
 
   bitcoin-ops@https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd:
     resolution: {tarball: https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd}
@@ -1699,8 +1696,6 @@ snapshots:
 
   bip66@1.1.0: {}
 
-  bitcoin-ops@1.4.1(patch_hash=e3rte2ei7t37ob6gj563hohxna): {}
-
   bitcoin-ops@https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd(patch_hash=e3rte2ei7t37ob6gj563hohxna): {}
 
   blake2b-wasm@2.4.0:
@@ -1835,7 +1830,7 @@ snapshots:
       create-hash: 1.2.0
       inherits: 2.0.4
       ripemd160: 2.0.3
-      safe-buffer: 5.0.1
+      safe-buffer: 5.2.1
       sha.js: 2.4.12
 
   cross-spawn@7.0.6:
@@ -2161,7 +2156,7 @@ snapshots:
 
   pushdata-bitcoin@1.0.1:
     dependencies:
-      bitcoin-ops: 1.4.1(patch_hash=e3rte2ei7t37ob6gj563hohxna)
+      bitcoin-ops: https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd(patch_hash=e3rte2ei7t37ob6gj563hohxna)
 
   randombytes@2.0.1: {}
 
