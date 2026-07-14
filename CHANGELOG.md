@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1 (2026-07-14) — packaging fix
+
+- The inlined VerusCoin forks (@bitgo/utxo-lib, verus-typescript-primitives,
+  bitcoin-ops) moved from `dependencies` to `devDependencies`: they are
+  compiled INTO dist/bundle.js at build time and must not be installed by
+  consumers. 0.4.0 still listed them as runtime deps, so strict installers
+  (pnpm blockExoticSubdeps) rejected the transitive git dependency. Runtime
+  `dependencies` are now exactly the six external npm packages the bundle
+  keeps external (bn.js, bs58check, create-hash, ecpair, tiny-secp256k1, wif).
+- Test fixture flake fixed (all-zeros coinbase txid in createCommitment).
+
+
 ## 0.4.0 (2026-07-14) — first public npm release (as @chainvue/verus-sdk)
 
 Renamed from the working title @chainvue/verus-sdk to the

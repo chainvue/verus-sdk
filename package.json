@@ -1,6 +1,6 @@
 {
   "name": "@chainvue/verus-sdk",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "100% offline, fully typed TypeScript SDK for Verus transaction signing",
   "main": "dist/bundle.js",
   "types": "dist/index.d.ts",
@@ -27,23 +27,23 @@
     "access": "public"
   },
   "dependencies": {
-    "@bitgo/utxo-lib": "github:VerusCoin/BitGoJS#utxo-lib-verus",
-    "bitcoin-ops": "github:VerusCoin/bitcoin-ops",
     "bn.js": "^5.2.2",
     "bs58check": "^2.1.2",
     "create-hash": "^1.2.0",
     "ecpair": "^2.1.0",
     "tiny-secp256k1": "^2.2.4",
-    "verus-typescript-primitives": "github:VerusCoin/verus-typescript-primitives#4243cd075b4f68df1ce72fd2fd9c9b18ac36767e",
     "wif": "^4.0.0"
   },
   "devDependencies": {
+    "@bitgo/utxo-lib": "github:VerusCoin/BitGoJS#utxo-lib-verus",
     "@types/bn.js": "^5.2.0",
     "@types/bs58check": "^2.1.2",
     "@types/create-hash": "^1.2.6",
     "@types/node": "^20.19.33",
+    "bitcoin-ops": "github:VerusCoin/bitcoin-ops",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
+    "verus-typescript-primitives": "github:VerusCoin/verus-typescript-primitives#4243cd075b4f68df1ce72fd2fd9c9b18ac36767e",
     "vitest": "^1.6.1"
   },
   "engines": {

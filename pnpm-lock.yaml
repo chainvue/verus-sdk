@@ -19,12 +19,6 @@ importers:
 
   .:
     dependencies:
-      '@bitgo/utxo-lib':
-        specifier: github:VerusCoin/BitGoJS#utxo-lib-verus
-        version: https://codeload.github.com/VerusCoin/BitGoJS/tar.gz/9701df63b479984f27680348f9671c2d40025a90
-      bitcoin-ops:
-        specifier: github:VerusCoin/bitcoin-ops
-        version: https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd(patch_hash=e3rte2ei7t37ob6gj563hohxna)
       bn.js:
         specifier: ^5.2.2
         version: 5.2.2
@@ -40,13 +34,13 @@ importers:
       tiny-secp256k1:
         specifier: ^2.2.4
         version: 2.2.4
-      verus-typescript-primitives:
-        specifier: github:VerusCoin/verus-typescript-primitives#4243cd075b4f68df1ce72fd2fd9c9b18ac36767e
-        version: https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e
       wif:
         specifier: ^4.0.0
         version: 4.0.0
     devDependencies:
+      '@bitgo/utxo-lib':
+        specifier: github:VerusCoin/BitGoJS#utxo-lib-verus
+        version: https://codeload.github.com/VerusCoin/BitGoJS/tar.gz/9701df63b479984f27680348f9671c2d40025a90
       '@types/bn.js':
         specifier: ^5.2.0
         version: 5.2.0
@@ -59,12 +53,18 @@ importers:
       '@types/node':
         specifier: ^20.19.33
         version: 20.19.33
+      bitcoin-ops:
+        specifier: github:VerusCoin/bitcoin-ops
+        version: https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd(patch_hash=e3rte2ei7t37ob6gj563hohxna)
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.6)(typescript@5.9.3)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      verus-typescript-primitives:
+        specifier: github:VerusCoin/verus-typescript-primitives#4243cd075b4f68df1ce72fd2fd9c9b18ac36767e
+        version: https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e
       vitest:
         specifier: ^1.6.1
         version: 1.6.1(@types/node@20.19.33)
