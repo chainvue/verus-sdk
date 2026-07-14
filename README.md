@@ -48,8 +48,9 @@ selection or change bug throws; it never hands you a bad transaction.
 - **Self-contained bundle**: the VerusCoin forks (utxo-lib, primitives,
   bitcoin-ops) are inlined — no `github:` deps or install-time patches in your
   tree. Regular npm deps install normally.
-- **TypeScript**: set `"skipLibCheck": true` — the bundled fork type
-  declarations aren't rolled up yet. Runtime is unaffected.
+- **TypeScript**: self-contained declarations — no `skipLibCheck` needed and no
+  fork packages to install; the type surface for the bundled forks ships with the
+  package.
 - **Signing only**: broadcasting, UTXO fetching, and confirmation tracking are
   yours (see [`verus-rpc`](https://www.npmjs.com/package/verus-rpc)).
 - Node ≥ 18. Wire format proven against a live VRSCTEST daemon — see

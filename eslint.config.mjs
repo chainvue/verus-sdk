@@ -11,7 +11,10 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/", "node_modules/", "coverage/"],
+    // fork-shims.d.ts is a hand-written ambient declaration shipped to
+    // consumers; it is intentionally excluded from the typed project (it would
+    // collide with the real bitgo-utxo-lib.d.ts), so typed linting can't parse it.
+    ignores: ["dist/", "node_modules/", "coverage/", "src/fork-shims.d.ts"],
   },
   {
     files: ["**/*.ts", "**/*.js", "**/*.mjs"],

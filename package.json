@@ -6,7 +6,7 @@
   "main": "dist/bundle.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/finalize-types.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist",
