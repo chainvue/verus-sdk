@@ -1,75 +1,58 @@
 # @chainvue/verus-sdk
 
-**100% offline Verus transaction signing.** Build and sign Verus
-transactions — native transfers, token/currency transfers, conversions,
-and the full VerusID lifecycle (name commitment, registration, sub-IDs,
-update/revoke/recover, message signing) — with no daemon and no network
-access. You bring UTXOs and a WIF; the SDK returns signed transaction hex.
-
-Serialization delegates to VerusCoin's own primitives
-(`verus-typescript-primitives`) and a fork of `@bitgo/utxo-lib`, so the
-wire format is the daemon's, not a reimplementation.
-
-## Install
+Offline Verus transaction signing. Bring UTXOs and a WIF; get back signed
+transaction hex — no daemon, no network. Native transfers, token/currency
+transfers, conversions, and the full VerusID lifecycle. Serialization uses
+VerusCoin's own primitives, so the wire format is the daemon's, not a reimpl.
 
 ```bash
-npm install @chainvue/verus-sdk
+npm i @chainvue/verus-sdk
 ```
-
-The published package is a **self-contained bundle**: the VerusCoin forks
-(utxo-lib, primitives, bitcoin-ops) are inlined, so there are no `github:`
-dependencies or install-time patches in your dependency graph. Regular npm
-dependencies (`tiny-secp256k1`, `ecpair`, `bs58check`, `bn.js`,
-`create-hash`, `wif`) install normally.
-
-> **TypeScript consumers:** the type declarations reference the fork
-> packages' types, so set `"skipLibCheck": true` in your `tsconfig.json`
-> until the declarations are rolled up. Runtime is unaffected.
-
-## Usage
 
 ```ts
-import { VerusSDK } from '@chainvue/verus-sdk';
+import { VerusSDK } from "@chainvue/verus-sdk";
 
-const sdk = new VerusSDK({ network: 'testnet' }); // or 'mainnet'
+const sdk = new VerusSDK({ network: "testnet" }); // or "mainnet"
 
-// Native transfer — returns { signedTx, txid, fee, inputsUsed, nativeChange }
-const result = sdk.transfer({
-  wif: '<WIF>',
-  to: 'R...recipient',
-  amount: 100_000_000,          // satoshis
-  utxos: [/* { txid, outputIndex, satoshis, script } */],
-  changeAddress: 'R...change',
+const { signedTx, txid, fee } = sdk.transfer({
+  wif: "<WIF>",
+  to: "R…recipient",
+  amount: 100_000_000n, // satoshis (bigint)
+  utxos: [{ txid, outputIndex, satoshis: 500_000_000n, script }],
+  changeAddress: "R…change",
 });
-// broadcast result.signedTx via your own RPC (e.g. verus-rpc sendrawtransaction)
-
-// Decode a signed tx for a wallet ledger:
-import { utils } from '@chainvue/verus-sdk';
-const summary = utils.summarizeSignedTransaction(result.signedTx, 'testnet');
-// { txid, inputs: [{txid, vout}], outputs: [{valueSat, scriptHex, address}] }
+// broadcast signedTx yourself, e.g. verus-rpc `sendrawtransaction`
 ```
 
-Static helpers: `VerusSDK.generateWif()`, `VerusSDK.deriveAddress(wif)`,
-`VerusSDK.deriveIdentityAddress(name, parent?)`,
-`VerusSDK.validateAddress(addr)`, `VerusSDK.validateWif(wif)`.
+**Money is `bigint` satoshis end to end — never a float.** Convert at the edges:
+`parseSats("1.5") → 150000000n`, `toCoins(150000000n) → "1.5"`.
 
-Identity lifecycle: `createCommitment`, `registerIdentity`,
-`updateIdentity` / `lockIdentity` / `unlockIdentity` / `revokeIdentity` /
-`recoverIdentity`, plus `signMessage` / `verifyMessage`.
+## What it does
 
-## Safety
+- **Transfers** — `transfer`, `transferToken`, `convert`, and `sendCurrency`
+  (full control over multi-output / cross-chain sends).
+- **VerusID** — `createCommitment` → `registerIdentity` (incl. sub-IDs), then
+  `updateIdentity` / `lockIdentity` / `unlockIdentity` / `revokeIdentity` /
+  `recoverIdentity`, plus `signMessage` / `verifyMessage`.
+- **Helpers** — `VerusSDK.generateWif()`, `deriveAddress(wif)`,
+  `deriveIdentityAddress(name, parent?)`, `validateAddress`, `validateWif`;
+  `utils.summarizeSignedTransaction(hex)` decodes a signed tx (txid, spent
+  outpoints, addressed outputs) for your ledger.
 
-- **Every built transfer is validated** against its unfunded intent
-  (utxo-lib's own funded-transfer validator: per-currency value
-  conservation, change to the declared address) before the hex is returned
-  — a selection/change bug throws instead of producing a bad tx.
-- Signing is **offline**: the SDK never opens a socket. Broadcasting,
-  UTXO fetching and confirmation tracking are the caller's job.
+Every built transfer is re-validated against its intent — per-currency value
+conservation, change to the declared address — before the hex is returned. A
+selection or change bug throws; it never hands you a bad transaction.
 
-## Status
+## Good to know
 
-Pre-release. The transaction wire format is proven against a live VRSCTEST
-daemon (decode round-trip + `sendrawtransaction` acceptance) — see
-[RISKS.md](./RISKS.md) for the live-proof harness and open items.
+- **Self-contained bundle**: the VerusCoin forks (utxo-lib, primitives,
+  bitcoin-ops) are inlined — no `github:` deps or install-time patches in your
+  tree. Regular npm deps install normally.
+- **TypeScript**: set `"skipLibCheck": true` — the bundled fork type
+  declarations aren't rolled up yet. Runtime is unaffected.
+- **Signing only**: broadcasting, UTXO fetching, and confirmation tracking are
+  yours (see [`verus-rpc`](https://www.npmjs.com/package/verus-rpc)).
+- Node ≥ 18. Wire format proven against a live VRSCTEST daemon — see
+  [RISKS.md](./RISKS.md).
 
-License: Apache-2.0.
+Apache-2.0 · see [NOTICE](./NOTICE) for the bundled forks.
