@@ -32,15 +32,15 @@ import {
 
 interface ExpectedOutput {
   address: string;
-  satoshis: number;
+  satoshis: bigint;
 }
 
 interface Scenario {
   name: string;
   signedTx: string;
   txid: string;
-  fee: number;
-  inputTotal: number;
+  fee: bigint;
+  inputTotal: bigint;
   inputsUsed: number;
   /** P2PKH outputs the tx must contain with exact values. */
   expectP2pkh: ExpectedOutput[];
@@ -52,12 +52,12 @@ function buildScenarios(): Scenario[] {
   const scenarios: Scenario[] = [];
 
   {
-    const inputTotal = 100_000_000;
+    const inputTotal = 100_000_000n;
     const r = transfer(
       {
         wif: TEST_WIF,
         to: TEST_ADDRESS_B,
-        amount: 50_000_000,
+        amount: 50_000_000n,
         utxos: [makeFundingUtxo('aa', inputTotal)],
         changeAddress: TEST_ADDRESS,
       },
@@ -71,7 +71,7 @@ function buildScenarios(): Scenario[] {
       inputTotal,
       inputsUsed: r.inputsUsed,
       expectP2pkh: [
-        { address: TEST_ADDRESS_B, satoshis: 50_000_000 },
+        { address: TEST_ADDRESS_B, satoshis: 50_000_000n },
         { address: TEST_ADDRESS, satoshis: r.nativeChange },
       ],
       hasSmartOutputs: false,
@@ -79,16 +79,16 @@ function buildScenarios(): Scenario[] {
   }
 
   {
-    const inputTotal = 90_000_000;
+    const inputTotal = 90_000_000n;
     const r = transfer(
       {
         wif: TEST_WIF,
         to: TEST_ADDRESS_B,
-        amount: 70_000_000,
+        amount: 70_000_000n,
         utxos: [
-          makeFundingUtxo('aa', 30_000_000),
-          makeFundingUtxo('bb', 30_000_000),
-          makeFundingUtxo('cc', 30_000_000),
+          makeFundingUtxo('aa', 30_000_000n),
+          makeFundingUtxo('bb', 30_000_000n),
+          makeFundingUtxo('cc', 30_000_000n),
         ],
         changeAddress: TEST_ADDRESS,
       },
@@ -100,20 +100,20 @@ function buildScenarios(): Scenario[] {
       txid: r.txid,
       fee: r.fee,
       // selectUtxos may not use all three inputs; recompute what it consumed.
-      inputTotal: 70_000_000 + r.fee + r.nativeChange,
+      inputTotal: 70_000_000n + r.fee + r.nativeChange,
       inputsUsed: r.inputsUsed,
-      expectP2pkh: [{ address: TEST_ADDRESS_B, satoshis: 70_000_000 }],
+      expectP2pkh: [{ address: TEST_ADDRESS_B, satoshis: 70_000_000n }],
       hasSmartOutputs: false,
     });
   }
 
   {
-    const inputTotal = 100_000_000;
+    const inputTotal = 100_000_000n;
     const r = transferToken(
       {
         wif: TEST_WIF,
         to: TEST_ADDRESS_B,
-        amount: 10_000_000,
+        amount: 10_000_000n,
         currency: VRSCTEST_SYSTEM_ID,
         utxos: [makeFundingUtxo('aa', inputTotal)],
         changeAddress: TEST_ADDRESS,
@@ -133,20 +133,20 @@ function buildScenarios(): Scenario[] {
   }
 
   {
-    const inputTotal = 500_000_000;
+    const inputTotal = 500_000_000n;
     const r = sendCurrency(
       {
         wif: TEST_WIF,
         outputs: [
           {
             currency: VRSCTEST_SYSTEM_ID,
-            satoshis: '100000000',
+            satoshis: 100_000_000n,
             address: TEST_ADDRESS_B,
             addressType: 'PKH',
           },
           {
             currency: VRSCTEST_SYSTEM_ID,
-            satoshis: '50000000',
+            satoshis: 50_000_000n,
             address: TEST_ADDRESS,
             addressType: 'PKH',
           },
@@ -189,17 +189,17 @@ describe('ring 1: utxo-lib decode round-trip', () => {
       });
 
       it('conserves value: inputs = outputs + fee', () => {
-        const outSum = tx.outs.reduce((acc: number, o: { value: number }) => acc + o.value, 0);
+        const outSum = tx.outs.reduce((acc: bigint, o: { value: number }) => acc + BigInt(o.value), 0n);
         expect(outSum + s.fee).toBe(s.inputTotal);
       });
 
       it('contains the expected P2PKH outputs with exact values', () => {
         for (const expected of s.expectP2pkh) {
-          if (expected.satoshis === 0) continue; // change absorbed into fee
+          if (expected.satoshis === 0n) continue; // change absorbed into fee
           const script = addressToScriptPubKey(expected.address).toString('hex');
           const match = tx.outs.find(
             (o: { script: Buffer; value: number }) =>
-              o.script.toString('hex') === script && o.value === expected.satoshis,
+              o.script.toString('hex') === script && BigInt(o.value) === expected.satoshis,
           );
           expect(match, `${expected.address} @ ${expected.satoshis}`).toBeTruthy();
         }
@@ -246,14 +246,14 @@ describe.skipIf(process.env['SDK_PUBLIC_DECODE'] !== '1')(
         expect(decoded.txid).toBe(s.txid);
         expect(decoded.vin.length).toBe(s.inputsUsed);
 
-        const voutSum = decoded.vout.reduce((acc, o) => acc + o.valueSat, 0);
+        const voutSum = decoded.vout.reduce((acc, o) => acc + BigInt(o.valueSat), 0n);
         expect(voutSum + s.fee).toBe(s.inputTotal);
 
         for (const expected of s.expectP2pkh) {
-          if (expected.satoshis === 0) continue;
+          if (expected.satoshis === 0n) continue;
           const match = decoded.vout.find(
             (o) =>
-              o.valueSat === expected.satoshis &&
+              BigInt(o.valueSat) === expected.satoshis &&
               (o.scriptPubKey.addresses ?? []).includes(expected.address),
           );
           expect(match, `${expected.address} @ ${expected.satoshis}`).toBeTruthy();

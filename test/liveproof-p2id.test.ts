@@ -45,7 +45,7 @@ const enabled = Boolean(
 );
 
 const FUNDING_COINS = 0.05;
-const FUNDING_SATS = 5_000_000;
+const FUNDING_SATS = 5_000_000n;
 
 async function lanRpc(method: string, params: unknown[] = []): Promise<unknown> {
   const response = await fetch(RPC_URL!, {
@@ -122,15 +122,15 @@ describe.skipIf(!enabled)('ring 4: P2ID spend acceptance (VRSCTEST, SPENDS DUST)
         .map((u) => ({
           txid: u.txid,
           outputIndex: u.outputIndex,
-          satoshis: u.satoshis,
+          satoshis: BigInt(u.satoshis),
           script: u.script,
         }));
-      const totalIn = utxos.reduce((acc, u) => acc + u.satoshis, 0);
+      const totalIn = utxos.reduce((acc, u) => acc + u.satoshis, 0n);
       expect(totalIn).toBeGreaterThanOrEqual(FUNDING_SATS);
 
       // 3. Build + sign OFFLINE with the identity's primary key: sweep the
       // identity-held funds to the primary R-address.
-      const fee = 10_000;
+      const fee = 10_000n;
       const result = transfer(
         {
           wif: ID_WIF!,
@@ -154,7 +154,7 @@ describe.skipIf(!enabled)('ring 4: P2ID spend acceptance (VRSCTEST, SPENDS DUST)
         vout: Array<{ valueSat: number }>;
       };
       expect(known.txid).toBe(result.txid);
-      const outSum = known.vout.reduce((acc, o) => acc + o.valueSat, 0);
+      const outSum = known.vout.reduce((acc, o) => acc + BigInt(o.valueSat), 0n);
       expect(outSum + fee).toBe(totalIn);
 
       console.log(

@@ -36,16 +36,16 @@ describe('currency', () => {
       identityHex: mock.identityHex,
       identityUtxo: mock.identityUtxo,
       currencyDefScript: MOCK_CURRENCY_DEF_SCRIPT,
-      utxos: [makeFundingUtxo('aa', 100_000_000)],
+      utxos: [makeFundingUtxo('aa', 100_000_000n)],
       changeAddress: TEST_ADDRESS,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
     expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
-    expect(result.fee).toBeGreaterThan(0);
+    expect(result.fee).toBeGreaterThan(0n);
     expect(result.identityAddress).toMatch(/^i/);
     expect(result.inputsUsed).toBeGreaterThanOrEqual(2); // funding + identity
-    expect(result.nativeChange).toBeGreaterThan(0);
+    expect(result.nativeChange).toBeGreaterThan(0n);
   });
 
   it('should set FLAG_ACTIVECURRENCY on the identity', () => {
@@ -58,7 +58,7 @@ describe('currency', () => {
       identityHex: mock.identityHex,
       identityUtxo: mock.identityUtxo,
       currencyDefScript: MOCK_CURRENCY_DEF_SCRIPT,
-      utxos: [makeFundingUtxo('aa', 100_000_000)],
+      utxos: [makeFundingUtxo('aa', 100_000_000n)],
       changeAddress: TEST_ADDRESS,
     }, NETWORK);
 
@@ -75,13 +75,13 @@ describe('currency', () => {
       identityHex: mock.identityHex,
       identityUtxo: mock.identityUtxo,
       currencyDefScript: MOCK_CURRENCY_DEF_SCRIPT,
-      currencyDefValue: 1_000_000, // 0.01 VRSC output value on currency def
-      utxos: [makeFundingUtxo('aa', 100_000_000)],
+      currencyDefValue: 1_000_000n, // 0.01 VRSC output value on currency def
+      utxos: [makeFundingUtxo('aa', 100_000_000n)],
       changeAddress: TEST_ADDRESS,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
-    expect(result.fee).toBeGreaterThan(0);
+    expect(result.fee).toBeGreaterThan(0n);
   });
 
   it('should throw on insufficient funds', () => {
@@ -93,8 +93,8 @@ describe('currency', () => {
         identityHex: mock.identityHex,
         identityUtxo: mock.identityUtxo,
         currencyDefScript: MOCK_CURRENCY_DEF_SCRIPT,
-        currencyDefValue: 500_000_000_000, // 5000 VRSC
-        utxos: [makeFundingUtxo('aa', 1_000)], // only 0.00001 VRSC
+        currencyDefValue: 500_000_000_000n, // 5000 VRSC
+        utxos: [makeFundingUtxo('aa', 1_000n)], // only 0.00001 VRSC
         changeAddress: TEST_ADDRESS,
       }, NETWORK),
     ).toThrow(/[Ii]nsufficient/);

@@ -6,6 +6,7 @@ import { createHash } from 'crypto';
 import bs58check from 'bs58check';
 import { fromBase58Check } from 'verus-typescript-primitives';
 import { NETWORK_CONFIG } from '../constants/index.js';
+import { InvalidAmountError } from '../errors.js';
 
 /**
  * SHA256d (double SHA-256) of one or more buffers
@@ -49,14 +50,71 @@ export function iAddressToHash(iAddress: string): Buffer {
   return Buffer.from(hash);
 }
 
-/** Convert coin units to satoshis */
-export function toSatoshis(coins: number): number {
-  return Math.round(coins * 1e8);
+// ─── Exact money conversions (bigint satoshis ↔ decimal strings) ─────────
+
+/** Number of decimal places in a coin amount */
+export const AMOUNT_DECIMALS = 8;
+
+/** Satoshis per coin unit */
+export const SATS_PER_COIN = 100_000_000n;
+
+/**
+ * Grammar for decimal coin amounts: non-negative, no leading zeros in the
+ * integer part, optional `.` with 1–8 fraction digits. No exponents, no
+ * signs, no whitespace.
+ */
+const DECIMAL_AMOUNT_RE = /^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/;
+
+/**
+ * Parse a decimal coin-amount string into bigint satoshis. Exact arithmetic
+ * only — rejects anything outside the grammar (negative, exponent notation,
+ * more than 8 fraction digits, empty, non-numeric) with a typed error.
+ */
+export function parseSats(decimal: string): bigint {
+  if (typeof decimal !== 'string' || !DECIMAL_AMOUNT_RE.test(decimal)) {
+    throw new InvalidAmountError(String(decimal));
+  }
+  const [whole, fraction = ''] = decimal.split('.');
+  return BigInt(whole) * SATS_PER_COIN + BigInt(fraction.padEnd(AMOUNT_DECIMALS, '0'));
 }
 
-/** Convert satoshis to coin units */
-export function toCoins(satoshis: number): number {
-  return satoshis / 1e8;
+/** Convert coin units (decimal string) to satoshis — alias of parseSats */
+export function toSatoshis(coins: string): bigint {
+  return parseSats(coins);
+}
+
+/**
+ * Convert satoshis to a decimal coin-unit string (minimal form, trailing
+ * fraction zeros trimmed). Exact — never goes through float64.
+ */
+export function toCoins(satoshis: bigint): string {
+  const sign = satoshis < 0n ? '-' : '';
+  const abs = satoshis < 0n ? -satoshis : satoshis;
+  const whole = abs / SATS_PER_COIN;
+  const fraction = abs % SATS_PER_COIN;
+  if (fraction === 0n) return `${sign}${whole}`;
+  const fractionStr = fraction
+    .toString()
+    .padStart(AMOUNT_DECIMALS, '0')
+    .replace(/0+$/, '');
+  return `${sign}${whole}.${fractionStr}`;
+}
+
+const MAX_SAFE_SATS = BigInt(Number.MAX_SAFE_INTEGER);
+
+/**
+ * Convert bigint satoshis to the `number` that @bitgo/utxo-lib expects at its
+ * boundary. The SDK is exact-integer internally; this is the single checked
+ * crossing into the signing library, which still models values as float64.
+ */
+export function toSafeNumber(sats: bigint): number {
+  if (sats < 0n || sats > MAX_SAFE_SATS) {
+    throw new InvalidAmountError(
+      sats.toString(),
+      'outside the safe-integer range supported by the underlying signing library',
+    );
+  }
+  return Number(sats);
 }
 
 /**
@@ -98,7 +156,7 @@ export interface DecodedInput {
 
 /** One output of a signed transaction. `address` is null for smart outputs. */
 export interface DecodedOutput {
-  valueSat: number;
+  valueSat: bigint;
   scriptHex: string;
   /** Base58 address when the script is plain P2PKH/P2SH, else null. */
   address: string | null;
@@ -148,7 +206,7 @@ export function summarizeSignedTransaction(
         addr = null; // exotic CC output — no address form
       }
     }
-    return { valueSat: out.value, scriptHex: out.script.toString('hex'), address: addr };
+    return { valueSat: BigInt(out.value), scriptHex: out.script.toString('hex'), address: addr };
   });
   return { txid: tx.getId(), inputs, outputs };
 }

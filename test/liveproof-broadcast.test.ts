@@ -28,7 +28,7 @@ const ALLOW_SPEND = process.env['SDK_ALLOW_SPEND'] === '1';
 const enabled = Boolean(RPC_URL && RPC_USER && RPC_PASS && ALLOW_SPEND);
 
 const FUNDING_COINS = 0.05;
-const FUNDING_SATS = 5_000_000;
+const FUNDING_SATS = 5_000_000n;
 
 async function rpc(method: string, params: unknown[] = []): Promise<unknown> {
   const response = await fetch(RPC_URL!, {
@@ -88,15 +88,15 @@ describe.skipIf(!enabled)('ring 3: funded broadcast acceptance (VRSCTEST, SPENDS
       const utxos: Utxo[] = rawUtxos.map((u) => ({
         txid: u.txid,
         outputIndex: u.outputIndex,
-        satoshis: u.satoshis,
+        satoshis: BigInt(u.satoshis),
         script: u.script,
       }));
-      const totalIn = utxos.reduce((acc, u) => acc + u.satoshis, 0);
+      const totalIn = utxos.reduce((acc, u) => acc + u.satoshis, 0n);
       expect(totalIn).toBe(FUNDING_SATS);
 
       // 4. Build + sign OFFLINE: sweep everything (minus fee) back to the node.
       const nodeAddress = (await rpc('getnewaddress', [])) as string;
-      const fee = 10_000;
+      const fee = 10_000n;
       const result = transfer(
         {
           wif: probeWif,
@@ -120,7 +120,7 @@ describe.skipIf(!enabled)('ring 3: funded broadcast acceptance (VRSCTEST, SPENDS
         vout: Array<{ valueSat: number }>;
       };
       expect(known.txid).toBe(result.txid);
-      const outSum = known.vout.reduce((acc, o) => acc + o.valueSat, 0);
+      const outSum = known.vout.reduce((acc, o) => acc + BigInt(o.valueSat), 0n);
       expect(outSum + fee).toBe(totalIn);
     },
   );

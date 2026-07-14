@@ -37,9 +37,9 @@ interface Scenario {
   name: string;
   signedTx: string;
   txid: string;
-  fee: number;
+  fee: bigint;
   /** Native satoshis entering the tx (all inputs). */
-  inputTotal: number;
+  inputTotal: bigint;
   inputCount: number;
   /**
    * Native satoshis deliberately left unclaimed (implicit burn). Root
@@ -48,7 +48,7 @@ interface Scenario {
    * behavior, protocol-plausible; ring 3 (funded acceptance) is the
    * final authority.
    */
-  expectedBurnSats: number;
+  expectedBurnSats: bigint;
 }
 
 function registrationInputs(name: string, parent?: string) {
@@ -64,7 +64,7 @@ function registrationInputs(name: string, parent?: string) {
   const commitmentUtxo: Utxo = {
     txid: 'aa'.repeat(32),
     outputIndex: 0,
-    satoshis: 0,
+    satoshis: 0n,
     script: commitment.commitmentScript.toString('hex'),
   };
   return { commitmentData, commitmentUtxo };
@@ -74,7 +74,7 @@ function buildScenarios(): Scenario[] {
   const scenarios: Scenario[] = [];
 
   {
-    const inputTotal = 100_000_000;
+    const inputTotal = 100_000_000n;
     const r = buildAndSignCommitment(
       {
         wif: TEST_WIF,
@@ -91,12 +91,12 @@ function buildScenarios(): Scenario[] {
       fee: r.fee,
       inputTotal,
       inputCount: 1,
-      expectedBurnSats: 0,
+      expectedBurnSats: 0n,
     });
   }
 
   {
-    const inputTotal = 20_000_000_000; // 200 VRSC covers the registration fee
+    const inputTotal = 20_000_000_000n; // 200 VRSC covers the registration fee
     const { commitmentData, commitmentUtxo } = registrationInputs('proofreg');
     const r = buildAndSignRegistration(
       {
@@ -116,12 +116,12 @@ function buildScenarios(): Scenario[] {
       fee: r.fee,
       inputTotal, // commitment input carries 0 sats
       inputCount: 2,
-      expectedBurnSats: 10_000_000_000, // full fee burned, no referral
+      expectedBurnSats: 10_000_000_000n, // full fee burned, no referral
     });
   }
 
   {
-    const inputTotal = 20_000_000_000;
+    const inputTotal = 20_000_000_000n;
     const referrer = deriveIdentityAddress('proofreferrer', VRSCTEST_SYSTEM_ID);
     const commitment = prepareNameCommitment('proofrefreg', TEST_ADDRESS, referrer, undefined, NETWORK);
     const commitmentData: CommitmentData = {
@@ -138,7 +138,7 @@ function buildScenarios(): Scenario[] {
         commitmentUtxo: {
           txid: 'aa'.repeat(32),
           outputIndex: 0,
-          satoshis: 0,
+          satoshis: 0n,
           script: commitment.commitmentScript.toString('hex'),
         },
         commitmentData,
@@ -157,7 +157,7 @@ function buildScenarios(): Scenario[] {
       inputTotal,
       inputCount: 2,
       // issuer portion burned: 10e9 * 4/5 (referralLevels=3); 2e9 paid out
-      expectedBurnSats: 8_000_000_000,
+      expectedBurnSats: 8_000_000_000n,
     });
   }
 
@@ -169,9 +169,9 @@ function buildScenarios(): Scenario[] {
     const { commitmentData, commitmentUtxo } = registrationInputs('agentone', parent);
     const tokenScript = buildTokenChangeOutput(
       TEST_ADDRESS,
-      new Map([[parent, 150_000_000]]),
+      new Map([[parent, 150_000_000n]]),
     );
-    const nativeIn = 50_000_000;
+    const nativeIn = 50_000_000n;
     const r = buildAndSignRegistration(
       {
         wif: TEST_WIF,
@@ -188,7 +188,7 @@ function buildScenarios(): Scenario[] {
           },
         ],
         changeAddress: TEST_ADDRESS,
-        registrationFeeAmount: 100_000_000, // 1.0 of the parent currency
+        registrationFeeAmount: 100_000_000n, // 1.0 of the parent currency
       },
       NETWORK,
     );
@@ -199,13 +199,13 @@ function buildScenarios(): Scenario[] {
       fee: r.fee,
       inputTotal: nativeIn + tokenScript.nativeValue,
       inputCount: 3,
-      expectedBurnSats: 0, // fee travels in parent currency, not native
+      expectedBurnSats: 0n, // fee travels in parent currency, not native
     });
   }
 
   {
     const mock = createMockIdentityHex({ name: 'proofupd' });
-    const fundingTotal = 100_000_000;
+    const fundingTotal = 100_000_000n;
     const r = buildAndSignIdentityUpdate(
       {
         wif: TEST_WIF,
@@ -225,13 +225,13 @@ function buildScenarios(): Scenario[] {
       fee: r.fee,
       inputTotal: fundingTotal + mock.identityUtxo.satoshis,
       inputCount: 2,
-      expectedBurnSats: 0,
+      expectedBurnSats: 0n,
     });
   }
 
   {
     const mock = createMockIdentityHex({ name: 'proofrevoke' });
-    const fundingTotal = 100_000_000;
+    const fundingTotal = 100_000_000n;
     const r = buildAndSignIdentityUpdate(
       {
         wif: TEST_WIF,
@@ -250,13 +250,13 @@ function buildScenarios(): Scenario[] {
       fee: r.fee,
       inputTotal: fundingTotal + mock.identityUtxo.satoshis,
       inputCount: 2,
-      expectedBurnSats: 0,
+      expectedBurnSats: 0n,
     });
   }
 
   {
     const mock = createMockIdentityHex({ name: 'proofrecover' });
-    const fundingTotal = 100_000_000;
+    const fundingTotal = 100_000_000n;
     const r = buildAndSignIdentityUpdate(
       {
         wif: TEST_WIF,
@@ -276,7 +276,7 @@ function buildScenarios(): Scenario[] {
       fee: r.fee,
       inputTotal: fundingTotal + mock.identityUtxo.satoshis,
       inputCount: 2,
-      expectedBurnSats: 0,
+      expectedBurnSats: 0n,
     });
   }
 
@@ -301,7 +301,7 @@ describe('ring 1 (identity): utxo-lib decode round-trip', () => {
       });
 
       it('conserves native value: inputs = outputs + fee + burn', () => {
-        const outSum = tx.outs.reduce((acc: number, o: { value: number }) => acc + o.value, 0);
+        const outSum = tx.outs.reduce((acc: bigint, o: { value: number }) => acc + BigInt(o.value), 0n);
         expect(outSum + s.fee + s.expectedBurnSats).toBe(s.inputTotal);
       });
     });
@@ -343,7 +343,7 @@ describe.skipIf(process.env['SDK_PUBLIC_DECODE'] !== '1')(
         expect(decoded.txid).toBe(s.txid);
         expect(decoded.vin.length).toBe(s.inputCount);
 
-        const voutSum = decoded.vout.reduce((acc, o) => acc + o.valueSat, 0);
+        const voutSum = decoded.vout.reduce((acc, o) => acc + BigInt(o.valueSat), 0n);
         expect(voutSum + s.fee + s.expectedBurnSats).toBe(s.inputTotal);
       });
     }

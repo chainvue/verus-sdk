@@ -29,19 +29,19 @@ export const VERSION_GROUP_ID = 0x892f2085;
 export const TX_VERSION = 4;
 
 /** Default fee per KB in satoshis (0.0001 VRSC) */
-export const DEFAULT_FEE_PER_KB = 10000;
+export const DEFAULT_FEE_PER_KB = 10_000n;
 
 /** Minimum output value (dust threshold) */
-export const DUST_THRESHOLD = 546;
+export const DUST_THRESHOLD = 546n;
 
 /** Default registration fee: 100 VRSC in satoshis */
-export const DEFAULT_REGISTRATION_FEE = 10_000_000_000;
+export const DEFAULT_REGISTRATION_FEE = 10_000_000_000n;
 
 /** Default referral levels for identity registration */
 export const DEFAULT_REFERRAL_LEVELS = 3;
 
 /** CReserveTransfer VRSC fee (20000 sat = 0.0002 VRSC) */
-export const RESERVE_TRANSFER_FEE = 20000;
+export const RESERVE_TRANSFER_FEE = 20_000n;
 
 /** Canonical eval pubkey address for EVAL_RESERVE_TRANSFER */
 export const RESERVE_TRANSFER_EVAL_PKH = 'RTqQe58LSj2yr5CrwYFwcsAQ1edQwmrkUU';

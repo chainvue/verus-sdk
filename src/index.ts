@@ -60,7 +60,14 @@ export {
 } from './address/index.js';
 
 // Unit conversions (also available via utils namespace)
-export { toSatoshis, toCoins } from './utils/index.js';
+export {
+  parseSats,
+  toSatoshis,
+  toCoins,
+  toSafeNumber,
+  SATS_PER_COIN,
+  AMOUNT_DECIMALS,
+} from './utils/index.js';
 
 // Typed errors
 export {
@@ -70,6 +77,7 @@ export {
   InvalidAddressError,
   InvalidNameError,
   TransactionBuildError,
+  InvalidAmountError,
 } from './errors.js';
 
 // Constants

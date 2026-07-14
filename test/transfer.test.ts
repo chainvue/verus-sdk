@@ -20,17 +20,17 @@ describe('transfer', () => {
           txid: 'a'.repeat(64),
           vout: 0,
           scriptPubKey: script,
-          amount: 100_000_000, // 1 VRSC
+          amount: 100_000_000n, // 1 VRSC
         }],
         outputs: [{
           address: TEST_ADDR_B,
-          amount: 99_990_000, // Leave 10000 sat fee (0.0001 VRSC)
+          amount: 99_990_000n, // Leave 10000 sat fee (0.0001 VRSC)
         }],
       }, 'testnet');
 
       expect(result.signedTx).toBeTruthy();
       expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
-      expect(result.fee).toBe(10_000); // 0.0001 VRSC
+      expect(result.fee).toBe(10_000n); // 0.0001 VRSC
     });
 
     it('should use explicit fee if provided', () => {
@@ -41,16 +41,16 @@ describe('transfer', () => {
           txid: 'b'.repeat(64),
           vout: 0,
           scriptPubKey: script,
-          amount: 200_000_000,
+          amount: 200_000_000n,
         }],
         outputs: [{
           address: TEST_ADDR_B,
-          amount: 199_950_000,
+          amount: 199_950_000n,
         }],
-        fee: 50_000,
+        fee: 50_000n,
       }, 'testnet');
 
-      expect(result.fee).toBe(50_000);
+      expect(result.fee).toBe(50_000n);
     });
 
     it('should throw on insufficient funds', () => {
@@ -62,13 +62,13 @@ describe('transfer', () => {
             txid: 'c'.repeat(64),
             vout: 0,
             scriptPubKey: script,
-            amount: 1_000,
+            amount: 1_000n,
           }],
           outputs: [{
             address: TEST_ADDR_B,
-            amount: 100_000_000,
+            amount: 100_000_000n,
           }],
-          fee: 10_000,
+          fee: 10_000n,
         }, 'testnet')
       ).toThrow('Insufficient funds');
     });

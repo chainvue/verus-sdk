@@ -12,8 +12,8 @@ function makeP2PKHScript(address: string): string {
   return addressToScriptPubKey(address).toString('hex');
 }
 
-function makeFundingUtxo(address: string, satoshis: number): {
-  txid: string; outputIndex: number; satoshis: number; script: string;
+function makeFundingUtxo(address: string, satoshis: bigint): {
+  txid: string; outputIndex: number; satoshis: bigint; script: string;
 } {
   return {
     // A real random 32-byte txid. The previous Buffer.alloc(32, rand)
@@ -61,34 +61,34 @@ describe('VerusSDK integration', () => {
           txid: 'a'.repeat(64),
           vout: 0,
           scriptPubKey: makeP2PKHScript(TEST_ADDR_A),
-          amount: 50_000_000,
+          amount: 50_000_000n,
         }],
         outputs: [{
           address: TEST_ADDR_B,
-          amount: 49_990_000, // Leave 10000 sat fee
+          amount: 49_990_000n, // Leave 10000 sat fee
         }],
       });
 
       expect(result.signedTx).toBeTruthy();
       expect(result.txid).toHaveLength(64);
-      expect(result.fee).toBe(10_000);
+      expect(result.fee).toBe(10_000n);
     });
   });
 
   describe('transfer', () => {
     it('should build and sign a native VRSC transfer', () => {
-      const utxo = makeFundingUtxo(TEST_ADDR_A, 500_000_000);
+      const utxo = makeFundingUtxo(TEST_ADDR_A, 500_000_000n);
       const result = sdk.transfer({
         wif: TEST_WIF_A,
         to: TEST_ADDR_B,
-        amount: 100_000_000,
+        amount: 100_000_000n,
         utxos: [utxo],
         changeAddress: TEST_ADDR_A,
       });
 
       expect(result.signedTx).toBeTruthy();
       expect(result.txid).toHaveLength(64);
-      expect(result.fee).toBeGreaterThan(0);
+      expect(result.fee).toBeGreaterThan(0n);
       expect(result.inputsUsed).toBe(1);
     });
   });
@@ -122,7 +122,7 @@ describe('VerusSDK integration', () => {
 
   describe('createCommitment', () => {
     it('should build and sign a name commitment', () => {
-      const utxo = makeFundingUtxo(TEST_ADDR_A, 100_000_000);
+      const utxo = makeFundingUtxo(TEST_ADDR_A, 100_000_000n);
 
       const result = sdk.createCommitment({
         wif: TEST_WIF_A,
@@ -141,8 +141,8 @@ describe('VerusSDK integration', () => {
     });
 
     it('should generate different commitments for different names', () => {
-      const utxo1 = makeFundingUtxo(TEST_ADDR_A, 100_000_000);
-      const utxo2 = makeFundingUtxo(TEST_ADDR_A, 100_000_000);
+      const utxo1 = makeFundingUtxo(TEST_ADDR_A, 100_000_000n);
+      const utxo2 = makeFundingUtxo(TEST_ADDR_A, 100_000_000n);
 
       const r1 = sdk.createCommitment({
         wif: TEST_WIF_A,
@@ -173,7 +173,7 @@ describe('VerusSDK integration', () => {
       // Constants
       expect(mod.NETWORK_CONFIG).toBeDefined();
       expect(mod.VERSION_GROUP_ID).toBe(0x892f2085);
-      expect(mod.DEFAULT_REGISTRATION_FEE).toBe(10_000_000_000);
+      expect(mod.DEFAULT_REGISTRATION_FEE).toBe(10_000_000_000n);
 
       // Submodules
       expect(mod.keys).toBeDefined();

@@ -33,12 +33,12 @@ function unsignedTxWithOutputs(outputs: Array<{ script: Buffer; value: number }>
 describe('summarizeSignedTransaction', () => {
   it('reports txid, consumed outpoints and addressed outputs of a transfer', () => {
     const sdk = new VerusSDK({ network: NETWORK });
-    const utxoA = makeFundingUtxo('aa', 60_000_000);
-    const utxoB = makeFundingUtxo('bb', 70_000_000);
+    const utxoA = makeFundingUtxo('aa', 60_000_000n);
+    const utxoB = makeFundingUtxo('bb', 70_000_000n);
     const result = sdk.transfer({
       wif: TEST_WIF,
       to: TEST_ADDRESS_B,
-      amount: 100_000_000, // needs both inputs
+      amount: 100_000_000n, // needs both inputs
       utxos: [utxoA, utxoB],
       changeAddress: TEST_ADDRESS,
     });
@@ -52,12 +52,12 @@ describe('summarizeSignedTransaction', () => {
     expect(outpoints).toContain(`${'bb'.repeat(32)}:0`);
 
     const toRecipient = summary.outputs.find((o) => o.address === TEST_ADDRESS_B);
-    expect(toRecipient?.valueSat).toBe(100_000_000);
+    expect(toRecipient?.valueSat).toBe(100_000_000n);
     const change = summary.outputs.find((o) => o.address === TEST_ADDRESS);
     expect(change?.valueSat).toBe(result.nativeChange);
     // Value conservation: inputs = outputs + fee.
-    const outSum = summary.outputs.reduce((sum, o) => sum + o.valueSat, 0);
-    expect(outSum + result.fee).toBe(130_000_000);
+    const outSum = summary.outputs.reduce((sum, o) => sum + o.valueSat, 0n);
+    expect(outSum + result.fee).toBe(130_000_000n);
   });
 
   it('decodes a P2ID payment output to its i-address (identity change, ring 4)', () => {
@@ -70,7 +70,7 @@ describe('summarizeSignedTransaction', () => {
     const summary = summarizeSignedTransaction(hex, NETWORK);
     expect(summary.outputs).toHaveLength(1);
     expect(summary.outputs[0].address).toBe(iAddress);
-    expect(summary.outputs[0].valueSat).toBe(4_000_000);
+    expect(summary.outputs[0].valueSat).toBe(4_000_000n);
   });
 
   it('keeps STRUCTURAL smart outputs at address null (commitment locator contract)', () => {

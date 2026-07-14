@@ -8,7 +8,7 @@ import type { Network } from '../constants/index.js';
 export interface Utxo {
   txid: string;
   outputIndex: number;
-  satoshis: number;
+  satoshis: bigint;
   script: string;
   /** Height where this UTXO was created (0 = mempool) */
   height?: number;
@@ -17,7 +17,7 @@ export interface Utxo {
 /** Decoded currency values on a UTXO */
 export interface DecodedUtxo extends Utxo {
   /** Currency i-address → satoshi amount */
-  currencyValues: Map<string, number>;
+  currencyValues: Map<string, bigint>;
 }
 
 /** Result of UTXO selection */
@@ -25,11 +25,11 @@ export interface SelectionResult {
   /** Selected UTXOs */
   selected: Utxo[];
   /** Native (VRSC) change in satoshis */
-  nativeChange: number;
+  nativeChange: bigint;
   /** Currency changes: i-address → satoshi amount */
-  currencyChanges: Map<string, number>;
+  currencyChanges: Map<string, bigint>;
   /** Estimated fee in satoshis */
-  fee: number;
+  fee: bigint;
 }
 
 /** SDK configuration */
@@ -41,7 +41,7 @@ export interface VerusSDKConfig {
 export interface SignedTxResult {
   signedTx: string;
   txid: string;
-  fee: number;
+  fee: bigint;
 }
 
 /** Transfer parameters */
@@ -50,7 +50,7 @@ export interface TransferParams {
   /** Recipient address (R-address) */
   to: string;
   /** Amount in satoshis */
-  amount: number;
+  amount: bigint;
   utxos: Utxo[];
   changeAddress: string;
   expiryHeight?: number;
@@ -62,7 +62,7 @@ export interface TransferTokenParams {
   /** Recipient address (R-address or i-address) */
   to: string;
   /** Amount in satoshis */
-  amount: number;
+  amount: bigint;
   /** Currency i-address */
   currency: string;
   /** Address type: 'PKH' (R-address) or 'ID' (i-address) */
@@ -76,7 +76,7 @@ export interface TransferTokenParams {
 export interface ConvertParams {
   wif: string;
   /** Amount in satoshis */
-  amount: number;
+  amount: bigint;
   /** Source currency i-address */
   currency: string;
   /** Target currency i-address */
@@ -92,8 +92,8 @@ export interface ConvertParams {
 export interface CurrencyOutput {
   /** Currency i-address (use system ID for native VRSC) */
   currency: string;
-  /** Amount in satoshis (as string) */
-  satoshis: string;
+  /** Amount in satoshis */
+  satoshis: bigint;
   /** Recipient address */
   address: string;
   /** Address type: 'PKH' (R-address), 'ID' (i-address), 'ETH' (Ethereum) */
@@ -109,7 +109,7 @@ export interface CurrencyOutput {
   /** Fee currency i-address */
   feeCurrency?: string;
   /** Fee amount in satoshis */
-  feeSatoshis?: string;
+  feeSatoshis?: bigint;
   /** Pre-conversion flag */
   preconvert?: boolean;
 }
@@ -126,7 +126,7 @@ export interface SendCurrencyParams {
 /** Send currency result */
 export interface SendCurrencyResult extends SignedTxResult {
   inputsUsed: number;
-  nativeChange: number;
+  nativeChange: bigint;
 }
 
 /** Simple P2PKH build+sign parameters */
@@ -136,13 +136,13 @@ export interface BuildAndSignParams {
     txid: string;
     vout: number;
     scriptPubKey: string;
-    amount: number;
+    amount: bigint;
   }>;
   outputs: Array<{
     address: string;
-    amount: number;
+    amount: bigint;
   }>;
-  fee?: number;
+  fee?: bigint;
   expiryHeight?: number;
 }
 
@@ -186,12 +186,12 @@ export interface RegisterIdentityParams {
   recoveryAuthority?: string;
   /** Referral chain: i-addresses tracing referral levels (up to 3) */
   referralChain?: string[];
-  /** Registration fee in VRSC satoshis (default: 10000000000 = 100 VRSC) */
-  registrationFee?: number;
+  /** Registration fee in VRSC satoshis (default: 10000000000n = 100 VRSC) */
+  registrationFee?: bigint;
   /** Registration fee in parent currency satoshis (for sub-IDs) */
-  registrationFeeAmount?: number;
+  registrationFeeAmount?: bigint;
   /** Native import fee in VRSC satoshis (for sub-IDs on fractional currencies) */
-  nativeImportFee?: number;
+  nativeImportFee?: bigint;
   /** Number of referral levels (default: 3) */
   referralLevels?: number;
   expiryHeight?: number;
@@ -200,11 +200,11 @@ export interface RegisterIdentityParams {
 /** Register identity result */
 export interface RegisterIdentityResult extends SignedTxResult {
   identityAddress: string;
-  registrationFee: number;
+  registrationFee: bigint;
   referralPayments: number;
-  referralAmountEach: number;
+  referralAmountEach: bigint;
   inputsUsed: number;
-  nativeChange: number;
+  nativeChange: bigint;
 }
 
 /** Update identity parameters */
@@ -228,7 +228,7 @@ export interface UpdateIdentityResult extends SignedTxResult {
   identityAddress: string;
   operation: string;
   inputsUsed: number;
-  nativeChange: number;
+  nativeChange: bigint;
 }
 
 /** Lock identity parameters */
@@ -281,7 +281,7 @@ export interface DefineCurrencyParams {
   identityHex: string;
   identityUtxo: Utxo;
   currencyDefScript: string;
-  currencyDefValue?: number;
+  currencyDefValue?: bigint;
   utxos: Utxo[];
   changeAddress: string;
   expiryHeight?: number;
@@ -291,7 +291,7 @@ export interface DefineCurrencyParams {
 export interface DefineCurrencyResult extends SignedTxResult {
   identityAddress: string;
   inputsUsed: number;
-  nativeChange: number;
+  nativeChange: bigint;
 }
 
 /** Sign message parameters */

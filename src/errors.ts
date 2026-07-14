@@ -18,11 +18,11 @@ export class VerusError extends Error {
 
 /** Thrown when UTXOs cannot cover the required amount */
 export class InsufficientFundsError extends VerusError {
-  readonly required: number;
-  readonly available: number;
+  readonly required: bigint;
+  readonly available: bigint;
   readonly currency: string;
 
-  constructor(required: number, available: number, currency: string = 'VRSC') {
+  constructor(required: bigint, available: bigint, currency: string = 'VRSC') {
     const shortfall = required - available;
     super(
       'INSUFFICIENT_FUNDS',
@@ -80,5 +80,21 @@ export class TransactionBuildError extends VerusError {
   constructor(detail: string) {
     super('TX_BUILD_ERROR', `Transaction build failed: ${detail}`);
     this.name = 'TransactionBuildError';
+  }
+}
+
+/** Thrown when a money amount is malformed or out of range */
+export class InvalidAmountError extends VerusError {
+  readonly value: string;
+
+  constructor(value: string, detail?: string) {
+    super(
+      'INVALID_AMOUNT',
+      detail
+        ? `Invalid amount "${value}": ${detail}`
+        : `Invalid amount: "${value}". Expected a non-negative decimal string with at most 8 fraction digits.`,
+    );
+    this.name = 'InvalidAmountError';
+    this.value = value;
   }
 }

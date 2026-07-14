@@ -16,6 +16,7 @@ import {
 } from '@bitgo/utxo-lib';
 import type { Utxo } from '../types/index.js';
 import { VERSION_GROUP_ID } from '../constants/index.js';
+import { toSafeNumber } from '../utils/index.js';
 
 const { getFundedTxBuilder, validateFundedCurrencyTransfer } = smarttxs;
 
@@ -46,7 +47,7 @@ export function signTransactionSmart(
   wif: string,
   utxos: Utxo[],
   network: VerusNetwork = networks.verus,
-  maxFeeSats?: number
+  maxFeeSats?: bigint
 ): { signedTx: string; txid: string } {
   const keyPair = ECPair.fromWIF(wif, network);
   const prevOutScripts = utxos.map((u) => Buffer.from(u.script, 'hex'));
@@ -56,12 +57,12 @@ export function signTransactionSmart(
     // The fork's .d.ts omits maximumFeeRate, but it exists at runtime
     // (transaction_builder.js: `this.maximumFeeRate = maximumFeeRate || 2500`).
     (txb as { maximumFeeRate?: number }).maximumFeeRate = Math.ceil(
-      maxFeeSats / (txHex.length / 2),
+      toSafeNumber(maxFeeSats) / (txHex.length / 2),
     );
   }
 
   for (let i = 0; i < utxos.length; i++) {
-    txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, utxos[i].satoshis);
+    txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, toSafeNumber(utxos[i].satoshis));
   }
 
   const signedTx = txb.build();
@@ -88,7 +89,7 @@ export function signTransactionMultiKey(
     for (const wif of keys[i]) {
       if (!wif) continue;
       const keyPair = ECPair.fromWIF(wif, network);
-      txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, utxos[i].satoshis);
+      txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, toSafeNumber(utxos[i].satoshis));
     }
   }
 
@@ -140,7 +141,7 @@ export function validateFundedTransaction(
     utxoList.map((u) => ({
       txid: u.txid,
       outputIndex: u.outputIndex,
-      satoshis: u.satoshis,
+      satoshis: toSafeNumber(u.satoshis),
       script: u.script,
       height: u.height || 0,
     }))

@@ -61,7 +61,7 @@ export const TEST_SCRIPT = makeP2PKHScript(TEST_ADDRESS);
  */
 export function makeFundingUtxo(
   txid: string,
-  satoshis: number,
+  satoshis: bigint,
   script: string = TEST_SCRIPT,
   vout: number = 0,
 ): Utxo {
@@ -125,7 +125,7 @@ export function createMockIdentityHex(opts: {
   const identityUtxo: Utxo = {
     txid: 'ff'.repeat(32),
     outputIndex: 0,
-    satoshis: 0,
+    satoshis: 0n,
     script: identityScriptBuf.toString('hex'),
   };
 

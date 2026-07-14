@@ -43,7 +43,7 @@ import {
   IDENTITY_FLAG_ACTIVECURRENCY,
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { sha256d, writeCompactSize, iAddressToHash } from '../utils/index.js';
+import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
 import { signTransactionSmart, getNetwork } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
@@ -354,20 +354,20 @@ export function buildReferralPaymentScript(iAddress: string): Buffer {
  */
 export function calculateRegistrationFees(
   hasReferral: boolean,
-  totalFee: number = DEFAULT_REGISTRATION_FEE,
+  totalFee: bigint = DEFAULT_REGISTRATION_FEE,
   referralLevels: number = DEFAULT_REFERRAL_LEVELS
 ): {
-  issuerFee: number;
-  referralAmount: number;
-  totalRequired: number;
+  issuerFee: bigint;
+  referralAmount: bigint;
+  totalRequired: bigint;
 } {
   if (!hasReferral) {
-    return { issuerFee: totalFee, referralAmount: 0, totalRequired: totalFee };
+    return { issuerFee: totalFee, referralAmount: 0n, totalRequired: totalFee };
   }
 
-  const issuerFee = Math.floor(totalFee * (referralLevels + 1) / (referralLevels + 2));
-  const referralAmount = Math.floor(totalFee / (referralLevels + 2));
-  const totalRequired = issuerFee + referralAmount * referralLevels;
+  const issuerFee = (totalFee * BigInt(referralLevels + 1)) / BigInt(referralLevels + 2);
+  const referralAmount = totalFee / BigInt(referralLevels + 2);
+  const totalRequired = issuerFee + referralAmount * BigInt(referralLevels);
 
   return { issuerFee, referralAmount, totalRequired };
 }
@@ -408,14 +408,14 @@ export function createIdentityObject(params: {
  */
 export function buildRegistrationFeeOutput(
   parentCurrencyId: string,
-  feeAmount: number,
+  feeAmount: bigint,
   systemId: string,
   _controlAddress: string,
-): { script: Buffer; nativeValue: number } {
+): { script: Buffer; nativeValue: bigint } {
   const destination = new TxDestination(KeyID.fromAddress(RESERVE_TRANSFER_EVAL_PKH));
 
   const values = new CurrencyValueMap({
-    value_map: new Map([[parentCurrencyId, new BN(feeAmount)]]),
+    value_map: new Map([[parentCurrencyId, new BN(feeAmount.toString(10))]]),
     multivalue: false,
   });
 
@@ -432,7 +432,7 @@ export function buildRegistrationFeeOutput(
     version: new BN(1),
     flags,
     fee_currency_id: systemId,
-    fee_amount: new BN(RESERVE_TRANSFER_FEE),
+    fee_amount: new BN(RESERVE_TRANSFER_FEE.toString(10)),
     transfer_destination: transferDest,
     dest_currency_id: parentCurrencyId,
   });
@@ -464,14 +464,14 @@ export function buildRegistrationFeeOutput(
  */
 export function buildTokenChangeOutput(
   changeAddress: string,
-  currencyChanges: Map<string, number>,
-): { script: Buffer; nativeValue: number } {
+  currencyChanges: Map<string, bigint>,
+): { script: Buffer; nativeValue: bigint } {
   const destination = new TxDestination(KeyID.fromAddress(changeAddress));
 
   const valueMap = new Map<string, typeof BN.prototype>();
   for (const [currency, amount] of currencyChanges) {
-    if (amount > 0) {
-      valueMap.set(currency, new BN(amount));
+    if (amount > 0n) {
+      valueMap.set(currency, new BN(amount.toString(10)));
     }
   }
 
@@ -501,7 +501,7 @@ export function buildTokenChangeOutput(
   });
 
   const script = new SmartTransactionScript(master, params);
-  return { script: script.toBuffer(), nativeValue: 0 };
+  return { script: script.toBuffer(), nativeValue: 0n };
 }
 
 // ─── Validation ──────────────────────────────────────────────────
@@ -555,7 +555,7 @@ export function buildAndSignCommitment(
   const utxos = params.utxos;
   const selection = selectUtxos(
     utxos,
-    0,
+    0n,
     new Map(),
     1,
     networkConfig.chainId,
@@ -579,8 +579,8 @@ export function buildAndSignCommitment(
 
   txb.addOutput(commitment.commitmentScript, 0);
 
-  if (selection.nativeChange > 0) {
-    txb.addOutput(params.changeAddress, selection.nativeChange);
+  if (selection.nativeChange > 0n) {
+    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
   }
 
   const unsignedTx = txb.buildIncomplete();
@@ -673,7 +673,7 @@ function _buildVrscRegistration(
     params.referralLevels,
   );
 
-  const referralOutputs: { script: Buffer; value: number }[] = [];
+  const referralOutputs: { script: Buffer; value: bigint }[] = [];
   if (hasReferral) {
     const chain = (params.referralChain && params.referralChain.length > 0)
       ? params.referralChain
@@ -690,7 +690,7 @@ function _buildVrscRegistration(
   // requiredNative = full registration fee (referral outputs come out of this total)
   // implicit fee to miners = totalFee - sum(referral outputs) + txFee
   const totalFee = params.registrationFee ?? DEFAULT_REGISTRATION_FEE;
-  const totalReferralPayments = referralOutputs.reduce((sum, o) => sum + o.value, 0);
+  const totalReferralPayments = referralOutputs.reduce((sum, o) => sum + o.value, 0n);
   const requiredNative = totalFee;
   const numOutputs = 2 + referralOutputs.length + 1;
   const selection = selectUtxos(
@@ -728,13 +728,13 @@ function _buildVrscRegistration(
   txb.addOutput(identityScript, 0);
 
   for (const referralOut of referralOutputs) {
-    txb.addOutput(referralOut.script, referralOut.value);
+    txb.addOutput(referralOut.script, toSafeNumber(referralOut.value));
   }
 
   txb.addOutput(reservationScript, 0);
 
-  if (selection.nativeChange > 0) {
-    txb.addOutput(params.changeAddress, selection.nativeChange);
+  if (selection.nativeChange > 0n) {
+    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
   }
 
   const unsignedTx = txb.buildIncomplete();
@@ -781,7 +781,7 @@ function _buildSubIdRegistration(
   network: any,
 ): RegisterIdentityResult {
   const registrationFeeAmount = params.registrationFeeAmount;
-  if (!registrationFeeAmount || registrationFeeAmount <= 0) {
+  if (!registrationFeeAmount || registrationFeeAmount <= 0n) {
     throw new Error(
       'registrationFeeAmount is required for sub-ID registration. ' +
       'Specify the fee in parent currency satoshis.'
@@ -795,11 +795,11 @@ function _buildSubIdRegistration(
     params.changeAddress,
   );
 
-  const requiredCurrencies = new Map<string, number>([
+  const requiredCurrencies = new Map<string, bigint>([
     [parentIAddress, registrationFeeAmount],
   ]);
 
-  const nativeImportFee = params.nativeImportFee || 0;
+  const nativeImportFee = params.nativeImportFee || 0n;
   const nativeTarget = feeOutput.nativeValue + nativeImportFee;
 
   const numOutputs = 4;
@@ -836,19 +836,19 @@ function _buildSubIdRegistration(
   }
 
   txb.addOutput(identityScript, 0);
-  txb.addOutput(feeOutput.script, feeOutput.nativeValue);
+  txb.addOutput(feeOutput.script, toSafeNumber(feeOutput.nativeValue));
   txb.addOutput(reservationScript, 0);
 
   const hasTokenChange = selection.currencyChanges.size > 0;
-  if (hasTokenChange || selection.nativeChange > 0) {
+  if (hasTokenChange || selection.nativeChange > 0n) {
     if (hasTokenChange) {
       const tokenChangeScript = buildTokenChangeOutput(
         params.changeAddress,
         selection.currencyChanges,
       );
-      txb.addOutput(tokenChangeScript.script, selection.nativeChange);
+      txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
     } else {
-      txb.addOutput(params.changeAddress, selection.nativeChange);
+      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
   }
 
@@ -869,7 +869,7 @@ function _buildSubIdRegistration(
     identityAddress,
     registrationFee: registrationFeeAmount,
     referralPayments: 0,
-    referralAmountEach: 0,
+    referralAmountEach: 0n,
     inputsUsed: allUtxos.length,
     nativeChange: selection.nativeChange,
   };
@@ -968,7 +968,7 @@ export function buildAndSignIdentityUpdate(
 
   const selection = selectUtxos(
     params.utxos,
-    0,
+    0n,
     new Map(),
     1,
     systemId,
@@ -995,8 +995,8 @@ export function buildAndSignIdentityUpdate(
     txb.addOutput(out.script, out.value);
   }
 
-  if (selection.nativeChange > 0) {
-    txb.addOutput(params.changeAddress, selection.nativeChange);
+  if (selection.nativeChange > 0n) {
+    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
   }
 
   const fundedTx = txb.buildIncomplete();

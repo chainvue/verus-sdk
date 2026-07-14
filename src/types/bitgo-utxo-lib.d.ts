@@ -1,4 +1,6 @@
 declare module '@bitgo/utxo-lib' {
+  import BN from 'bn.js';
+
   export const networks: {
     verus: any;
     verustest: any;
@@ -49,8 +51,8 @@ declare module '@bitgo/utxo-lib' {
       allowNonTransferEvals?: boolean
     ): {
       destinations: string[];
-      values: Record<string, any>;
-      fees: Record<string, any>;
+      values: Record<string, BN>;
+      fees: Record<string, BN>;
       type: string;
       master?: any;
       params?: any[];

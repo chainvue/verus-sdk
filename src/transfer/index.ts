@@ -24,7 +24,7 @@ import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, validateFundedTransaction } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
-import { addressToScriptPubKey } from '../utils/index.js';
+import { addressToScriptPubKey, toSafeNumber } from '../utils/index.js';
 import { InvalidWifError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
 import type {
@@ -55,10 +55,10 @@ function validateTransferInputs(wif: string, utxos: Utxo[]): void {
   }
 }
 
-/** Validate amount is positive and finite */
-function validateAmount(amount: number, label: string = 'amount'): void {
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new TransactionBuildError(`Invalid ${label}: must be a positive finite number (got ${amount})`);
+/** Validate amount is a positive bigint */
+function validateAmount(amount: bigint, label: string = 'amount'): void {
+  if (typeof amount !== 'bigint' || amount <= 0n) {
+    throw new TransactionBuildError(`Invalid ${label}: must be a positive bigint satoshi amount (got ${amount})`);
   }
 }
 
@@ -120,14 +120,14 @@ export function sendCurrency(
 
   const txOutputs = params.outputs.map((out) => ({
     currency: out.currency,
-    satoshis: out.satoshis,
+    satoshis: out.satoshis.toString(10),
     address: parseAddress(out.address, out.addressType || 'PKH'),
     convertto: out.convertTo,
     exportto: out.exportTo,
     via: out.via,
     bridgeid: out.bridgeId,
     feecurrency: out.feeCurrency,
-    feesatoshis: out.feeSatoshis,
+    feesatoshis: out.feeSatoshis === undefined ? undefined : out.feeSatoshis.toString(10),
     preconvert: out.preconvert,
   }));
 
@@ -139,22 +139,21 @@ export function sendCurrency(
   );
 
   const unfundedTx = Transaction.fromHex(unfundedTxHex, verusNetwork);
-  let requiredNative = 0;
+  let requiredNative = 0n;
   for (const out of unfundedTx.outs) {
-    requiredNative += out.value;
+    requiredNative += BigInt(out.value);
   }
 
   const hasSmartOutputs = params.outputs.some(
     (o) => o.convertTo || o.exportTo || o.via || o.currency !== systemId
   );
 
-  const requiredCurrencies = new Map<string, number>();
+  const requiredCurrencies = new Map<string, bigint>();
   for (const out of params.outputs) {
     if (out.currency !== systemId) {
-      const amount = parseInt(out.satoshis, 10);
       requiredCurrencies.set(
         out.currency,
-        (requiredCurrencies.get(out.currency) || 0) + amount,
+        (requiredCurrencies.get(out.currency) || 0n) + out.satoshis,
       );
     }
   }
@@ -192,17 +191,17 @@ export function sendCurrency(
       params.changeAddress,
       selection.currencyChanges,
     );
-    txb.addOutput(tokenChange.script, tokenChange.nativeValue);
+    txb.addOutput(tokenChange.script, toSafeNumber(tokenChange.nativeValue));
   }
 
-  if (selection.nativeChange > 0) {
+  if (selection.nativeChange > 0n) {
     // utxo-lib's addOutput only resolves base58 R-addresses; identity
     // change (an i-address changeAddress) needs the explicit P2ID script —
     // byte-identical to the chain's own pay-to-identity outputs.
     if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(params.changeAddress), selection.nativeChange);
+      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
     } else {
-      txb.addOutput(params.changeAddress, selection.nativeChange);
+      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
   }
 
@@ -254,7 +253,7 @@ export function transfer(
     wif: params.wif,
     outputs: [{
       currency: systemId,
-      satoshis: params.amount.toString(),
+      satoshis: params.amount,
       address: params.to,
       addressType: 'PKH',
     }],
@@ -276,7 +275,7 @@ export function transferToken(
     wif: params.wif,
     outputs: [{
       currency: params.currency,
-      satoshis: params.amount.toString(),
+      satoshis: params.amount,
       address: params.to,
       addressType: params.addressType || 'PKH',
     }],
@@ -298,7 +297,7 @@ export function convert(
     wif: params.wif,
     outputs: [{
       currency: params.currency,
-      satoshis: params.amount.toString(),
+      satoshis: params.amount,
       address: params.changeAddress, // Conversion output goes to self
       addressType: 'PKH',
       convertTo: params.convertTo,
@@ -332,9 +331,9 @@ export function buildAndSign(
   }
   const verusNetwork = getNetwork(network === 'testnet');
 
-  const totalInput = params.inputs.reduce((sum, i) => sum + i.amount, 0);
-  const totalOutput = params.outputs.reduce((sum, o) => sum + o.amount, 0);
-  const fee = params.fee || (totalInput - totalOutput);
+  const totalInput = params.inputs.reduce((sum, i) => sum + i.amount, 0n);
+  const totalOutput = params.outputs.reduce((sum, o) => sum + o.amount, 0n);
+  const fee = params.fee ?? (totalInput - totalOutput);
 
   if (totalOutput + fee > totalInput) {
     throw new Error(`Insufficient funds. Input: ${totalInput}, Output: ${totalOutput}, Fee: ${fee}`);
@@ -357,7 +356,7 @@ export function buildAndSign(
 
   for (const out of params.outputs) {
     const script = addressToScriptPubKey(out.address);
-    txb.addOutput(script, out.amount);
+    txb.addOutput(script, toSafeNumber(out.amount));
   }
 
   const unsignedTx = txb.buildIncomplete();

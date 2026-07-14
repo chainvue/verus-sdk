@@ -1,42 +1,50 @@
 import { describe, it, expect } from 'vitest';
-import { toSatoshis, toCoins } from '../src/utils/index';
+import { toSatoshis, parseSats, toCoins } from '../src/utils/index';
 
 describe('toSatoshis', () => {
   it('converts whole coins', () => {
-    expect(toSatoshis(1)).toBe(100000000);
-    expect(toSatoshis(100)).toBe(10000000000);
+    expect(toSatoshis('1')).toBe(100000000n);
+    expect(toSatoshis('100')).toBe(10000000000n);
   });
 
   it('converts fractional coins', () => {
-    expect(toSatoshis(0.5)).toBe(50000000);
-    expect(toSatoshis(0.00000001)).toBe(1);
+    expect(toSatoshis('0.5')).toBe(50000000n);
+    expect(toSatoshis('0.00000001')).toBe(1n);
   });
 
-  it('rounds to avoid floating point issues', () => {
-    expect(toSatoshis(0.1 + 0.2)).toBe(30000000);
+  it('is exact for decimals that are not float-representable', () => {
+    // 0.1 + 0.2 !== 0.3 as JS numbers — the string API has no such artifact
+    expect(toSatoshis('0.3')).toBe(30000000n);
   });
 
   it('handles zero', () => {
-    expect(toSatoshis(0)).toBe(0);
+    expect(toSatoshis('0')).toBe(0n);
+  });
+});
+
+describe('parseSats', () => {
+  it('is the same conversion as toSatoshis', () => {
+    expect(parseSats('1')).toBe(100000000n);
+    expect(parseSats('42.12345678')).toBe(toSatoshis('42.12345678'));
   });
 });
 
 describe('toCoins', () => {
   it('converts whole satoshis', () => {
-    expect(toCoins(100000000)).toBe(1);
-    expect(toCoins(10000000000)).toBe(100);
+    expect(toCoins(100000000n)).toBe('1');
+    expect(toCoins(10000000000n)).toBe('100');
   });
 
   it('converts fractional satoshis', () => {
-    expect(toCoins(50000000)).toBe(0.5);
-    expect(toCoins(1)).toBe(0.00000001);
+    expect(toCoins(50000000n)).toBe('0.5');
+    expect(toCoins(1n)).toBe('0.00000001');
   });
 
   it('handles zero', () => {
-    expect(toCoins(0)).toBe(0);
+    expect(toCoins(0n)).toBe('0');
   });
 
   it('roundtrips with toSatoshis', () => {
-    expect(toCoins(toSatoshis(42.12345678))).toBeCloseTo(42.12345678, 8);
+    expect(toCoins(toSatoshis('42.12345678'))).toBe('42.12345678');
   });
 });

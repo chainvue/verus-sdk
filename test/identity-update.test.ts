@@ -29,7 +29,7 @@ function makeUpdateParams(name: string, overrides?: Record<string, unknown>) {
     wif: TEST_WIF,
     identityHex: mock.identityHex,
     identityUtxo: mock.identityUtxo,
-    utxos: [makeFundingUtxo('aa', 100_000_000)],
+    utxos: [makeFundingUtxo('aa', 100_000_000n)],
     changeAddress: TEST_ADDRESS,
     ...overrides,
   };
@@ -49,7 +49,7 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
       expect(result.operation).toBe('update');
-      expect(result.fee).toBeGreaterThan(0);
+      expect(result.fee).toBeGreaterThan(0n);
       expect(result.inputsUsed).toBeGreaterThanOrEqual(2); // funding + identity
     });
 
@@ -112,7 +112,7 @@ describe('buildAndSignIdentityUpdate', () => {
 
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.operation).toBe('lock');
-      expect(result.fee).toBeGreaterThan(0);
+      expect(result.fee).toBeGreaterThan(0n);
     });
 
     it('should throw when unlockAfter is missing for lock', () => {
@@ -140,7 +140,7 @@ describe('buildAndSignIdentityUpdate', () => {
           wif: TEST_WIF,
           identityHex: mock.identityHex,
           identityUtxo: mock.identityUtxo,
-          utxos: [makeFundingUtxo('aa', 100_000_000)],
+          utxos: [makeFundingUtxo('aa', 100_000_000n)],
           changeAddress: TEST_ADDRESS,
           expiryHeight: 200_000,
         },
@@ -163,7 +163,7 @@ describe('buildAndSignIdentityUpdate', () => {
 
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.operation).toBe('revoke');
-      expect(result.fee).toBeGreaterThan(0);
+      expect(result.fee).toBeGreaterThan(0n);
     });
   });
 
@@ -179,7 +179,7 @@ describe('buildAndSignIdentityUpdate', () => {
 
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.operation).toBe('recover');
-      expect(result.fee).toBeGreaterThan(0);
+      expect(result.fee).toBeGreaterThan(0n);
     });
   });
 });

@@ -42,7 +42,7 @@ const REFERRER_C = deriveIdentityAddress('referrerc', SYSTEM_ID);
 function createMockRegistrationInputs(
   name: string,
   referralIAddress?: string,
-  fundingSatoshis: number = 20_000_000_000, // 200 VRSC
+  fundingSatoshis: bigint = 20_000_000_000n, // 200 VRSC
 ) {
   const commitment = prepareNameCommitment(
     name,
@@ -65,7 +65,7 @@ function createMockRegistrationInputs(
   const commitmentUtxo: Utxo = {
     txid: 'aa'.repeat(32),
     outputIndex: 0,
-    satoshis: 0,
+    satoshis: 0n,
     script: commitment.commitmentScript.toString('hex'),
   };
 
@@ -106,10 +106,10 @@ describe('buildAndSignRegistration', () => {
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
     expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
     expect(result.referralPayments).toBe(0);
-    expect(result.referralAmountEach).toBe(0);
+    expect(result.referralAmountEach).toBe(0n);
     expect(result.registrationFee).toBe(DEFAULT_REGISTRATION_FEE);
     expect(result.identityAddress).toMatch(/^i/);
-    expect(result.nativeChange).toBeGreaterThan(0);
+    expect(result.nativeChange).toBeGreaterThan(0n);
   });
 
   // ─── Test 2: 1 referrer, chain=[A] ────────────────
@@ -158,7 +158,7 @@ describe('buildAndSignRegistration', () => {
     );
 
     expect(result.referralPayments).toBe(2);
-    expect(result.referralAmountEach).toBe(2_000_000_000); // 20 VRSC
+    expect(result.referralAmountEach).toBe(2_000_000_000n); // 20 VRSC
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
   });
 
@@ -166,7 +166,7 @@ describe('buildAndSignRegistration', () => {
 
   it('should register with 3 referrers (max chain)', () => {
     const { commitmentData, commitmentUtxo, fundingUtxos } =
-      createMockRegistrationInputs('threeref', REFERRER_A, 30_000_000_000);
+      createMockRegistrationInputs('threeref', REFERRER_A, 30_000_000_000n);
 
     const result = buildAndSignRegistration(
       {
@@ -182,9 +182,9 @@ describe('buildAndSignRegistration', () => {
     );
 
     expect(result.referralPayments).toBe(3);
-    expect(result.referralAmountEach).toBe(2_000_000_000); // 20 VRSC each
+    expect(result.referralAmountEach).toBe(2_000_000_000n); // 20 VRSC each
     // issuer fee = totalFee - 3 * referralAmount = 100 - 60 = 40 VRSC
-    expect(result.registrationFee).toBe(4_000_000_000);
+    expect(result.registrationFee).toBe(4_000_000_000n);
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
   });
 
@@ -192,12 +192,12 @@ describe('buildAndSignRegistration', () => {
 
   it('should succeed with a single large UTXO', () => {
     const { commitmentData, commitmentUtxo } =
-      createMockRegistrationInputs('thinreg', REFERRER_A, 20_000_000_000);
+      createMockRegistrationInputs('thinreg', REFERRER_A, 20_000_000_000n);
 
     const singleUtxo: Utxo = {
       txid: 'cc'.repeat(32),
       outputIndex: 0,
-      satoshis: 20_000_000_000,
+      satoshis: 20_000_000_000n,
       script: TEST_SCRIPT,
     };
 
@@ -216,19 +216,19 @@ describe('buildAndSignRegistration', () => {
 
     expect(result.referralPayments).toBe(1);
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
-    expect(result.nativeChange).toBeGreaterThan(0);
+    expect(result.nativeChange).toBeGreaterThan(0n);
   });
 
   // ─── Test 6: Insufficient balance ─────────────────
 
   it('should throw on insufficient balance', () => {
     const { commitmentData, commitmentUtxo } =
-      createMockRegistrationInputs('poorid', REFERRER_A, 1_000_000_000);
+      createMockRegistrationInputs('poorid', REFERRER_A, 1_000_000_000n);
 
     const tinyUtxo: Utxo = {
       txid: 'dd'.repeat(32),
       outputIndex: 0,
-      satoshis: 50_000_000, // 0.5 VRSC — below 80 VRSC needed
+      satoshis: 50_000_000n, // 0.5 VRSC — below 80 VRSC needed
       script: TEST_SCRIPT,
     };
 
@@ -268,7 +268,7 @@ describe('buildAndSignRegistration', () => {
     );
 
     expect(result.referralPayments).toBe(1);
-    expect(result.referralAmountEach).toBe(2_000_000_000);
+    expect(result.referralAmountEach).toBe(2_000_000_000n);
   });
 
   // ─── Test 8: commitmentData.referral + explicit referralChain ───
@@ -291,7 +291,7 @@ describe('buildAndSignRegistration', () => {
     );
 
     expect(result.referralPayments).toBe(2);
-    expect(result.referralAmountEach).toBe(2_000_000_000);
+    expect(result.referralAmountEach).toBe(2_000_000_000n);
   });
 
   // ─── Structural verification ──────────────────────
@@ -318,7 +318,7 @@ describe('buildAndSignRegistration', () => {
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
     expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
     expect(result.inputsUsed).toBeGreaterThanOrEqual(2);
-    expect(result.fee).toBeGreaterThan(0);
+    expect(result.fee).toBeGreaterThan(0n);
   });
 
   // ─── Regression: E6 live failure ──────────────────
@@ -337,7 +337,7 @@ describe('buildAndSignRegistration', () => {
     const liveShapeUtxo: Utxo = {
       txid: 'ee'.repeat(32),
       outputIndex: 0,
-      satoshis: 10_099_990_000,
+      satoshis: 10_099_990_000n,
       script: TEST_SCRIPT,
     };
 
@@ -361,9 +361,9 @@ describe('buildAndSignRegistration', () => {
 
   it('should respect custom registrationFee and referralLevels', () => {
     const { commitmentData, commitmentUtxo, fundingUtxos } =
-      createMockRegistrationInputs('customfee', REFERRER_A, 50_000_000_000);
+      createMockRegistrationInputs('customfee', REFERRER_A, 50_000_000_000n);
 
-    const customFee = 20_000_000_000; // 200 VRSC
+    const customFee = 20_000_000_000n; // 200 VRSC
     const customLevels = 4;
     const expectedFees = calculateRegistrationFees(true, customFee, customLevels);
 
@@ -383,7 +383,7 @@ describe('buildAndSignRegistration', () => {
     );
 
     // Actual issuer fee = totalFee - numReferrers * referralAmount
-    expect(result.registrationFee).toBe(customFee - 2 * expectedFees.referralAmount);
+    expect(result.registrationFee).toBe(customFee - 2n * expectedFees.referralAmount);
     expect(result.referralAmountEach).toBe(expectedFees.referralAmount);
     expect(result.referralPayments).toBe(2);
   });

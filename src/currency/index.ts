@@ -21,6 +21,7 @@ import { NETWORK_CONFIG, VERSION_GROUP_ID, IDENTITY_FLAG_ACTIVECURRENCY } from '
 import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
+import { toSafeNumber } from '../utils/index.js';
 import type { Utxo, DefineCurrencyParams, DefineCurrencyResult } from '../types/index.js';
 
 const { completeFundedIdentityUpdate } = smarttxs;
@@ -37,7 +38,7 @@ export function defineCurrency(
   const verusNetwork = getNetwork(network === 'testnet');
   const networkConfig = NETWORK_CONFIG[network];
   const systemId = networkConfig.chainId;
-  const currencyDefValue = params.currencyDefValue || 0;
+  const currencyDefValue = params.currencyDefValue || 0n;
 
   // Parse identity and set FLAG_ACTIVECURRENCY
   const identity = new Identity();
@@ -79,10 +80,10 @@ export function defineCurrency(
   }
 
   txb.addOutput(identityOutputScript, 0);
-  txb.addOutput(currencyDefScript, currencyDefValue);
+  txb.addOutput(currencyDefScript, toSafeNumber(currencyDefValue));
 
-  if (selection.nativeChange > 0) {
-    txb.addOutput(params.changeAddress, selection.nativeChange);
+  if (selection.nativeChange > 0n) {
+    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
   }
 
   const fundedTx = txb.buildIncomplete();
