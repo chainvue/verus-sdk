@@ -13,13 +13,14 @@ export default defineConfig({
       exclude: ['**/*.d.ts', 'src/index.ts', 'src/types/**'],
       reporter: ['text-summary', 'html', 'lcov'],
       // Floors set a few points below the 2026-07-14 measured coverage
-      // (stmts 91.7 / branch 78.4 / funcs 84.5 / lines 91.7) so the gate is
-      // stable but still catches a real regression. Ratchet upward over time.
+      // (vitest 4, AST-aware v8: stmts 87.5 / branch 73.8 / funcs 86.8 /
+      // lines 88.0) so the gate is stable but still catches a real
+      // regression. Ratchet upward over time.
       thresholds: {
-        statements: 86,
-        branches: 73,
-        functions: 80,
-        lines: 86,
+        statements: 83,
+        branches: 69,
+        functions: 82,
+        lines: 83,
       },
     },
   },
