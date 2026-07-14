@@ -69,8 +69,8 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Test
-        run: pnpm test
+      - name: Test (with coverage threshold)
+        run: pnpm test:coverage
 
       - name: Release
         run: >-
