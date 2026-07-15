@@ -53,7 +53,6 @@ selection or change bug throws; it never hands you a bad transaction.
   package.
 - **Signing only**: broadcasting, UTXO fetching, and confirmation tracking are
   yours (see [`@chainvue/verus-rpc`](https://www.npmjs.com/package/@chainvue/verus-rpc)).
-- Node ≥ 18. Wire format proven against a live VRSCTEST daemon — see
-  [RISKS.md](./RISKS.md).
+- Node ≥ 18. Wire format proven against a live VRSCTEST daemon.
 
 Apache-2.0 · see [NOTICE](./NOTICE) for the bundled forks.

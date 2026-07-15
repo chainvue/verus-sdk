@@ -31,7 +31,7 @@ the bundled VerusCoin forks). See RISKS.md for the full migration log.
 
 ## 0.4.0 (2026-07-14) — first public npm release (as @chainvue/verus-sdk)
 
-Renamed from the working title @chainvue/verus-sdk to the
+Renamed from the working title @chainvue/verus-typescript-sdk to the
 shorter @chainvue/verus-sdk before the first npmjs publish.
 
 100% offline Verus transaction signing, live-proven against VRSCTEST.
