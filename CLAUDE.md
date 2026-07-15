@@ -30,7 +30,7 @@ bytes; consumers broadcast. peculium-wallet is the primary consumer.
 `pnpm bundle` (tsup) produces the published `dist/bundle.js`.
 **Consumer proofs must run under plain `node`, not only vitest** — vitest's
 resolver has masked real consumer-breaking bugs (primitives split-brain,
-2026-07-13). See `RISKS.md`.
+2026-07-13).
 
 ## Releases — automated, do not hand-roll
 Conventional Commits drive **semantic-release**: `feat:` → minor, `fix:` →
@@ -39,5 +39,5 @@ or bump `version` in `package.json`** — the release pipeline owns both. Do not
 `git push`, tag, or publish without an explicit ask.
 
 ## Decision log
-`RISKS.md` is the running decision/risk log (maintainer-facing "why").
-`CHANGELOG.md` is adopter-facing "what changed". Keep them distinct.
+The maintainer-facing "why" (risks, decisions) is kept **privately, outside
+this repo**; `CHANGELOG.md` is the adopter-facing "what changed".
