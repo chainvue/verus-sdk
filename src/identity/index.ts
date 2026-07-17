@@ -906,6 +906,15 @@ export function buildAndSignIdentityUpdate(
       }
       if (params.contentMap) {
         for (const [key, value] of Object.entries(params.contentMap)) {
+          // Buffer.from(_, 'hex') silently drops non-hex characters and
+          // truncates odd-length input, so a malformed value would be committed
+          // to the identity on-chain as wrong/empty bytes with no error. Reject
+          // it instead.
+          if (!/^[0-9a-fA-F]*$/.test(value) || value.length % 2 !== 0) {
+            throw new TransactionBuildError(
+              `contentMap["${key}"] must be an even-length hex string (got ${JSON.stringify(value)})`,
+            );
+          }
           identity.content_map.set(key, Buffer.from(value, 'hex'));
         }
       }
