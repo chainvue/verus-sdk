@@ -53,7 +53,7 @@ export interface TransferParams {
   amount: bigint;
   utxos: Utxo[];
   changeAddress: string;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Token transfer parameters */
@@ -69,7 +69,7 @@ export interface TransferTokenParams {
   addressType?: 'PKH' | 'ID';
   utxos: Utxo[];
   changeAddress: string;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Currency conversion parameters */
@@ -85,7 +85,7 @@ export interface ConvertParams {
   via?: string;
   utxos: Utxo[];
   changeAddress: string;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Full send_currency output specification */
@@ -120,7 +120,7 @@ export interface SendCurrencyParams {
   outputs: CurrencyOutput[];
   utxos: Utxo[];
   changeAddress: string;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Send currency result */
@@ -143,7 +143,7 @@ export interface BuildAndSignParams {
     amount: bigint;
   }>;
   fee?: bigint;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Commitment data returned from createCommitment */
@@ -164,7 +164,7 @@ export interface CreateCommitmentParams {
   changeAddress: string;
   referral?: string;
   parent?: string;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Create commitment result */
@@ -194,7 +194,7 @@ export interface RegisterIdentityParams {
   nativeImportFee?: bigint;
   /** Number of referral levels (default: 3) */
   referralLevels?: number;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Register identity result */
@@ -220,7 +220,7 @@ export interface UpdateIdentityParams {
   recoveryAuthority?: string;
   contentMap?: Record<string, string>;
   contentMultimap?: Record<string, string | string[]>;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Update identity result */
@@ -239,7 +239,7 @@ export interface LockIdentityParams {
   unlockAfter: number;
   utxos: Utxo[];
   changeAddress: string;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Unlock identity parameters */
@@ -249,7 +249,7 @@ export interface UnlockIdentityParams {
   identityUtxo: Utxo;
   utxos: Utxo[];
   changeAddress: string;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Revoke identity parameters */
@@ -259,7 +259,7 @@ export interface RevokeIdentityParams {
   identityUtxo: Utxo;
   utxos: Utxo[];
   changeAddress: string;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Recover identity parameters */
@@ -272,7 +272,7 @@ export interface RecoverIdentityParams {
   primaryAddresses?: string[];
   revocationAuthority?: string;
   recoveryAuthority?: string;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Define currency parameters (manual mode only) */
@@ -284,7 +284,7 @@ export interface DefineCurrencyParams {
   currencyDefValue?: bigint;
   utxos: Utxo[];
   changeAddress: string;
-  expiryHeight?: number;
+  expiryHeight: number;
 }
 
 /** Define currency result */

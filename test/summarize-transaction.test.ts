@@ -41,6 +41,7 @@ describe('summarizeSignedTransaction', () => {
       amount: 100_000_000n, // needs both inputs
       utxos: [utxoA, utxoB],
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     });
 
     const summary = summarizeSignedTransaction(result.signedTx, NETWORK);

@@ -17,11 +17,38 @@ import {
 import type { Utxo } from '../types/index.js';
 import { VERSION_GROUP_ID } from '../constants/index.js';
 import { toSafeNumber } from '../utils/index.js';
+import { TransactionBuildError } from '../errors.js';
 
 const { getFundedTxBuilder, validateFundedCurrencyTransfer } = smarttxs;
 
 /** Network to use for signing */
 export type VerusNetwork = typeof networks.verus;
+
+/**
+ * Resolve the transaction expiry height, requiring an explicit choice.
+ *
+ * A Sapling-format transaction with nExpiryHeight 0 never expires. Silently
+ * defaulting to 0 produced never-expiring transactions — a replay / stuck-tx
+ * footgun in the Verus model, where the daemon itself always sets an expiry.
+ * This SDK is offline and cannot read the chain tip, so the caller must decide:
+ * pass `currentBlockHeight + DEFAULT_EXPIRY_DELTA` to bound the transaction, or
+ * an explicit `0` to opt into never-expiring.
+ */
+export function resolveExpiryHeight(expiryHeight: number | undefined): number {
+  if (expiryHeight === undefined) {
+    throw new TransactionBuildError(
+      'expiryHeight is required: pass currentBlockHeight + DEFAULT_EXPIRY_DELTA to bound the ' +
+        'transaction (this SDK is offline and cannot read the chain tip), or expiryHeight: 0 to ' +
+        'explicitly never expire.',
+    );
+  }
+  if (!Number.isInteger(expiryHeight) || expiryHeight < 0) {
+    throw new TransactionBuildError(
+      `Invalid expiryHeight: must be a non-negative integer (got ${expiryHeight})`,
+    );
+  }
+  return expiryHeight;
+}
 
 /**
  * Get the Verus network config

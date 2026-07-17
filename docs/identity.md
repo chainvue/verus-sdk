@@ -5,7 +5,9 @@ The SDK builds and signs every transaction in a VerusID's life: registration
 revoke/recover authority flow. Each method returns signed hex you broadcast
 yourself; none of them touch the network.
 
-Amounts are `bigint` satoshis (see [amounts](./amounts.md)).
+Amounts are `bigint` satoshis (see [amounts](./amounts.md)). Every build here
+also takes a required `expiryHeight` (omitted from the snippets below for
+brevity) — see [Transaction expiry](./transfers.md#transaction-expiry-required).
 
 ## Deriving an i-address
 
@@ -30,7 +32,8 @@ const commit = sdk.createCommitment({
   name: "alice",
   utxos,
   changeAddress,
-  // referral?, parent? (for a sub-ID), expiryHeight?
+  expiryHeight: tipHeight + 20,   // required
+  // referral?, parent? (for a sub-ID)
 });
 // → { signedTx, txid, identityAddress, commitmentData }
 // broadcast commit.signedTx, wait for confirmation, then read back the

@@ -60,6 +60,7 @@ function buildScenarios(): Scenario[] {
         amount: 50_000_000n,
         utxos: [makeFundingUtxo('aa', inputTotal)],
         changeAddress: TEST_ADDRESS,
+        expiryHeight: 0,
       },
       NETWORK,
     );
@@ -90,6 +91,7 @@ function buildScenarios(): Scenario[] {
           makeFundingUtxo('cc', 30_000_000n),
         ],
         changeAddress: TEST_ADDRESS,
+        expiryHeight: 0,
       },
       NETWORK,
     );
@@ -116,6 +118,7 @@ function buildScenarios(): Scenario[] {
         currency: VRSCTEST_SYSTEM_ID,
         utxos: [makeFundingUtxo('aa', inputTotal)],
         changeAddress: TEST_ADDRESS,
+        expiryHeight: 0,
       },
       NETWORK,
     );
@@ -152,6 +155,7 @@ function buildScenarios(): Scenario[] {
         ],
         utxos: [makeFundingUtxo('aa', inputTotal)],
         changeAddress: TEST_ADDRESS,
+        expiryHeight: 0,
       },
       NETWORK,
     );
