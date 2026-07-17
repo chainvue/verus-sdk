@@ -32,6 +32,7 @@ function makeUpdateParams(name: string, overrides?: Record<string, unknown>) {
     identityUtxo: mock.identityUtxo,
     utxos: [makeFundingUtxo('aa', 100_000_000n)],
     changeAddress: TEST_ADDRESS,
+    expiryHeight: 0,
     ...overrides,
   };
 }

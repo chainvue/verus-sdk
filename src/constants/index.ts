@@ -46,6 +46,14 @@ export const RESERVE_TRANSFER_FEE = 20_000n;
 /** Canonical eval pubkey address for EVAL_RESERVE_TRANSFER */
 export const RESERVE_TRANSFER_EVAL_PKH = 'RTqQe58LSj2yr5CrwYFwcsAQ1edQwmrkUU';
 
+/**
+ * Default number of blocks after the chain tip at which a transaction expires,
+ * matching the daemon's own wallet convention. Compute an expiryHeight as
+ * `currentBlockHeight + DEFAULT_EXPIRY_DELTA`. (This SDK is offline and cannot
+ * read the tip, so the caller supplies the height.)
+ */
+export const DEFAULT_EXPIRY_DELTA = 20;
+
 /** Identity version byte for i-addresses */
 export const I_ADDR_VERSION = 102; // 0x66
 

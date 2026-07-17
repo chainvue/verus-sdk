@@ -36,6 +36,7 @@ describe('transfer()', () => {
       amount: 50_000_000n, // 0.5 VRSC
       utxos,
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -58,6 +59,7 @@ describe('transfer()', () => {
       amount: 70_000_000n, // 0.7 VRSC — needs 2-3 UTXOs
       utxos,
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -76,6 +78,7 @@ describe('transfer()', () => {
       amount,
       utxos,
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -95,6 +98,7 @@ describe('transfer()', () => {
         amount: 100_000_000n, // 1 VRSC
         utxos,
         changeAddress: TEST_ADDRESS,
+        expiryHeight: 0,
       }, NETWORK),
     ).toThrow(/[Ii]nsufficient/);
   });
@@ -114,6 +118,7 @@ describe('transferToken()', () => {
       currency: SYSTEM_ID, // native as token — simplest test
       utxos,
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -133,6 +138,7 @@ describe('transferToken()', () => {
       addressType: 'ID',
       utxos,
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -154,6 +160,7 @@ describe('convert()', () => {
       convertTo: targetCurrency,
       utxos,
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -174,6 +181,7 @@ describe('convert()', () => {
       via: viaCurrency,
       utxos,
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -205,6 +213,7 @@ describe('sendCurrency()', () => {
       ],
       utxos,
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -231,6 +240,7 @@ describe('sendCurrency()', () => {
       ],
       utxos,
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -256,6 +266,7 @@ describe('sendCurrency()', () => {
       ],
       utxos,
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);

@@ -138,6 +138,7 @@ describe.skipIf(!enabled)('ring 4: P2ID spend acceptance (VRSCTEST, SPENDS DUST)
           amount: totalIn - fee,
           utxos,
           changeAddress: PRIMARY_ADDRESS!,
+          expiryHeight: 0,
         },
         'testnet',
       );

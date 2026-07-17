@@ -27,6 +27,25 @@ interface Utxo {
 The SDK selects inputs, computes the fee, and returns change to your
 `changeAddress`. It does **not** fetch UTXOs — that is the daemon's job.
 
+## Transaction expiry (required)
+
+Every build takes an `expiryHeight` — the block height past which the daemon
+will drop the transaction (Sapling `nExpiryHeight`). It is **required**: this
+SDK is offline and cannot read the chain tip, so you must decide.
+
+- Bound the transaction like the daemon does: `expiryHeight = currentBlockHeight
+  + DEFAULT_EXPIRY_DELTA` (exported; 20 blocks). You already know the tip — it's
+  where you fetched the UTXOs.
+- Opt into never-expiring explicitly with `expiryHeight: 0`.
+
+Omitting it throws — that's deliberate: a silently never-expiring signed
+transaction can confirm long after you thought it failed.
+
+```ts
+import { DEFAULT_EXPIRY_DELTA } from "@chainvue/verus-sdk";
+const expiryHeight = tipHeight + DEFAULT_EXPIRY_DELTA;
+```
+
 ## `transfer` — native VRSC to an R-address
 
 ```ts
@@ -38,7 +57,7 @@ const { signedTx, txid, fee } = sdk.transfer({
   amount: 100_000_000n,        // 1 VRSC
   utxos,
   changeAddress: "R…change",
-  // expiryHeight?: number     // optional tx expiry
+  expiryHeight: tipHeight + 20, // required — see "Transaction expiry" below
 });
 ```
 
@@ -53,6 +72,7 @@ sdk.transferToken({
   addressType: "PKH",          // "PKH" (R-address) | "ID" (i-address); default PKH
   utxos,
   changeAddress,
+  expiryHeight: tipHeight + 20,
 });
 ```
 

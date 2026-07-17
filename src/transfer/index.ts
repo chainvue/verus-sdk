@@ -21,7 +21,7 @@ import BN from 'bn.js';
 import bs58check from 'bs58check';
 import { NETWORK_CONFIG, VERSION_GROUP_ID, PUBKEY_HASH_PREFIX, I_ADDR_VERSION } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { signTransactionSmart, getNetwork, validateFundedTransaction } from '../signing/index.js';
+import { signTransactionSmart, getNetwork, validateFundedTransaction, resolveExpiryHeight } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { addressToScriptPubKey, toSafeNumber } from '../utils/index.js';
@@ -155,7 +155,7 @@ export function sendCurrency(
   const networkConfig = NETWORK_CONFIG[network];
   const verusNetwork = getNetwork(network === 'testnet');
   const systemId = networkConfig.chainId;
-  const expiryHeight = params.expiryHeight || 0;
+  const expiryHeight = resolveExpiryHeight(params.expiryHeight);
 
   const txOutputs = params.outputs.map((out) => ({
     currency: out.currency,
@@ -298,7 +298,7 @@ export function transfer(
     }],
     utxos: params.utxos,
     changeAddress: params.changeAddress,
-    ...(params.expiryHeight !== undefined ? { expiryHeight: params.expiryHeight } : {}),
+    expiryHeight: params.expiryHeight,
   }, network);
 }
 
@@ -320,7 +320,7 @@ export function transferToken(
     }],
     utxos: params.utxos,
     changeAddress: params.changeAddress,
-    ...(params.expiryHeight !== undefined ? { expiryHeight: params.expiryHeight } : {}),
+    expiryHeight: params.expiryHeight,
   }, network);
 }
 
@@ -344,7 +344,7 @@ export function convert(
     }],
     utxos: params.utxos,
     changeAddress: params.changeAddress,
-    ...(params.expiryHeight !== undefined ? { expiryHeight: params.expiryHeight } : {}),
+    expiryHeight: params.expiryHeight,
   }, network);
 }
 
@@ -389,7 +389,7 @@ export function buildAndSign(
 
   const txb = new TransactionBuilder(verusNetwork);
   txb.setVersion(4);
-  txb.setExpiryHeight(params.expiryHeight || 0);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
 
   for (const inp of params.inputs) {

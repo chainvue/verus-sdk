@@ -20,6 +20,7 @@ const { signedTx, txid, fee } = sdk.transfer({
   amount: 100_000_000n, // satoshis (bigint)
   utxos: [{ txid, outputIndex, satoshis: 500_000_000n, script }],
   changeAddress: "R…change",
+  expiryHeight: currentBlockHeight + 20, // required; 0 = never expires
 });
 // broadcast signedTx yourself, e.g. @chainvue/verus-rpc `sendrawtransaction`
 ```

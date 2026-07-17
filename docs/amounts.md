@@ -62,6 +62,7 @@ const { signedTx, txid, fee, nativeChange } = sdk.transfer({
   amount: 100_000_000n,   // bigint in
   utxos: [{ txid, outputIndex, satoshis: 500_000_000n, script }],
   changeAddress: "R…",
+  expiryHeight: tipHeight + 20,
 });
 // fee, nativeChange: bigint out
 ```
