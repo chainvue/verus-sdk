@@ -19,7 +19,7 @@ import {
 } from 'verus-typescript-primitives';
 import BN from 'bn.js';
 import bs58check from 'bs58check';
-import { NETWORK_CONFIG, VERSION_GROUP_ID } from '../constants/index.js';
+import { NETWORK_CONFIG, VERSION_GROUP_ID, PUBKEY_HASH_PREFIX, I_ADDR_VERSION } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, validateFundedTransaction } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
@@ -81,12 +81,32 @@ function parseAddress(address: string, addressType: string): TransferDestination
   switch (addressType) {
     case 'PKH': {
       type = DEST_PKH;
-      destinationBytes = decodeBase58Address(address).slice(1);
+      const decoded = decodeBase58Address(address);
+      // Fail closed: the version byte must be the R-address (P2PKH) prefix.
+      // Without this check an i-address (0x66) passed on the PKH path would be
+      // stripped to its 20-byte hash and paid out as a P2PKH output to an
+      // R-address nobody controls — a silent, unrecoverable loss.
+      if (decoded.length !== 21 || decoded[0] !== PUBKEY_HASH_PREFIX) {
+        throw new InvalidAddressError(
+          address,
+          "addressType 'PKH' requires an R-address (transparent P2PKH); got a different address version",
+        );
+      }
+      destinationBytes = decoded.slice(1);
       break;
     }
     case 'ID': {
       type = DEST_ID;
-      destinationBytes = decodeBase58Address(address).slice(1);
+      const decoded = decodeBase58Address(address);
+      // Fail closed: the version byte must be the identity i-address prefix, so
+      // an R-address can never be misrouted onto the identity-destination path.
+      if (decoded.length !== 21 || decoded[0] !== I_ADDR_VERSION) {
+        throw new InvalidAddressError(
+          address,
+          "addressType 'ID' requires an identity i-address; got a different address version",
+        );
+      }
+      destinationBytes = decoded.slice(1);
       break;
     }
     case 'ETH': {
