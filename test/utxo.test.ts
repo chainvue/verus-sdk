@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { selectUtxos, estimateFee } from '../src/utxo/index.js';
 import { NETWORK_CONFIG } from '../src/constants/index.js';
+import { TransactionBuildError } from '../src/errors.js';
 import type { Utxo } from '../src/types/index.js';
 
 const SYSTEM_ID = NETWORK_CONFIG.testnet.chainId;
@@ -42,6 +43,20 @@ describe('utxo', () => {
   });
 
   describe('selectUtxos', () => {
+    it('rejects a duplicate outpoint with a typed error (no double-count)', () => {
+      // makeUtxo(_, index) keys txid on index and uses outputIndex 0, so the
+      // same index twice is the same outpoint. Without the guard its value is
+      // double-counted and the failure surfaces late as an untyped builder
+      // "Duplicate TxOut".
+      const dup = makeUtxo(200_000n, 1);
+      expect(() =>
+        selectUtxos([dup, dup], 250_000n, new Map(), 2, SYSTEM_ID)
+      ).toThrow(TransactionBuildError);
+      expect(() =>
+        selectUtxos([dup, dup], 250_000n, new Map(), 2, SYSTEM_ID)
+      ).toThrow(/Duplicate UTXO/);
+    });
+
     it('should select enough UTXOs to cover amount + fee', () => {
       const utxos = [
         makeUtxo(1_000_000n, 1),

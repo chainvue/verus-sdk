@@ -108,6 +108,20 @@ export function selectUtxos(
   feePerKb: bigint = DEFAULT_FEE_PER_KB,
   hasSmartOutputs: boolean = false
 ): SelectionResult {
+  // Reject duplicate outpoints up front. An outpoint can only be spent once, so
+  // the same (txid, outputIndex) twice is always a caller error. Left unchecked
+  // its value is double-counted here (corrupting the funds accounting) and the
+  // failure only surfaces later as an untyped low-level "Duplicate TxOut" from
+  // the builder. Fail closed early with a typed error instead.
+  const seenOutpoints = new Set<string>();
+  for (const u of utxos) {
+    const outpoint = `${u.txid}:${u.outputIndex}`;
+    if (seenOutpoints.has(outpoint)) {
+      throw new TransactionBuildError(`Duplicate UTXO in inputs: ${outpoint} appears more than once`);
+    }
+    seenOutpoints.add(outpoint);
+  }
+
   const decoded = utxos.map((u) => decodeUtxo(u, systemId));
 
   const remaining = new Map<string, bigint>(requiredCurrencies);
