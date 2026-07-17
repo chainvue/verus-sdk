@@ -55,4 +55,23 @@ selection or change bug throws; it never hands you a bad transaction.
   yours (see [`@chainvue/verus-rpc`](https://www.npmjs.com/package/@chainvue/verus-rpc)).
 - Node ≥ 18. Wire format proven against a live VRSCTEST daemon.
 
+## Docs
+
+Per-area guides, plus runnable offline examples in [`examples/`](./examples):
+
+| Guide | What's in it |
+|---|---|
+| [amounts](./docs/amounts.md) | the money model — `bigint` satoshis, `parseSats`/`toCoins`, the one float64 boundary |
+| [transfers](./docs/transfers.md) | `transfer` / `transferToken` / `convert` / `sendCurrency`, UTXOs, change, re-validation |
+| [VerusID lifecycle](./docs/identity.md) | commit → register, update, lock/unlock, revoke/recover, sign/verify messages |
+| [signing & wire format](./docs/signing-and-wire.md) | why the bytes are the daemon's, the self-contained bundle, the proof rings |
+| [testing](./docs/testing.md) | the gate, the plain-`node` rule, the live-proof ring model |
+
+## Contributing
+
+Issues and PRs welcome — start with [CONTRIBUTING.md](./CONTRIBUTING.md) for the
+setup, the gate, and the two invariants that keep it trustworthy: amounts stay
+`bigint`, and the wire bytes are proven against a real daemon. Security issues
+(wrong bytes, amount precision, key handling): [SECURITY.md](./SECURITY.md).
+
 Apache-2.0 · see [NOTICE](./NOTICE) for the bundled forks.

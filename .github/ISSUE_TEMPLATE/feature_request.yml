@@ -1,0 +1,62 @@
+name: ✨ Feature request
+description: A signing capability or DX improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What's hard or impossible with the SDK today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - "Transfers (native / token / convert / sendCurrency outputs)"
+        - "VerusID lifecycle (register, update, lock, revoke, recover)"
+        - "Messages (sign / verify)"
+        - "Currency (define, classify)"
+        - "Keys / addresses / units"
+        - "Bundle / packaging / types / DX"
+        - "Docs / examples"
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This keeps amounts as `bigint` end to end (no money through a JS `number`)
+          required: false
+        - label: This stays 100% offline (no network / daemon calls in the SDK)
+          required: false
+        - label: This is a breaking change to the public API
+          required: false
+
+  - type: checkboxes
+    id: wire
+    attributes:
+      label: Wire format
+      description: If this adds or changes serialization.
+      options:
+        - label: New/changed serialization would need a proof it round-trips through a real daemon (golden vector or decode/broadcast)
+          required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Security vulnerability
+    url: https://github.com/chainvue/verus-sdk/security/advisories/new
+    about: Report wrong-bytes, amount-precision, or key-handling vulnerabilities privately — do NOT open a public issue.
+  - name: 📖 Verus documentation
+    url: https://docs.verus.io/
+    about: Questions about Verus itself (consensus, currencies, VerusID semantics) rather than this SDK belong in the Verus docs.
+  - name: 📡 Broadcasting & node access
+    url: https://www.npmjs.com/package/@chainvue/verus-rpc
+    about: This SDK only signs. Fetching UTXOs and broadcasting are @chainvue/verus-rpc's job.
