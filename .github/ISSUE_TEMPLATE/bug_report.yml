@@ -1,0 +1,107 @@
+name: 🐛 Bug report
+description: A build/sign call throws, produces wrong bytes, or the types are off
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. This SDK is 100% offline, so almost anything reproduces with a generated key and a synthetic UTXO — **never paste a real WIF, spending key, or any key that controls funds.** Generate a throwaway with `VerusSDK.generateWif()`. A wrong-bytes, wrong-amount, or key-leak issue is a security matter → report it privately (see the security link on the new-issue page), not here.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What's wrong?
+      description: What happened vs. what you expected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest runnable snippet. Use `VerusSDK.generateWif()` and a synthetic UTXO so it runs offline with no funds.
+      render: typescript
+      value: |
+        import { VerusSDK, utils } from "@chainvue/verus-sdk";
+
+        const sdk = new VerusSDK({ network: "testnet" });
+        const wif = VerusSDK.generateWif();
+        const address = await VerusSDK.deriveAddress(wif);
+        const script = utils.addressToScriptPubKey(address).toString("hex");
+
+        const r = sdk.transfer({
+          wif,
+          to: address,
+          amount: 90_000_000n,
+          utxos: [{ txid: "ab".repeat(32), outputIndex: 0, satoshis: 100_000_000n, script }],
+          changeAddress: address,
+        });
+        // expected: …
+        // got: …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area?
+      options:
+        - "Transfers (transfer / transferToken / convert / sendCurrency)"
+        - "VerusID (commitment, register, update, lock/unlock, revoke/recover)"
+        - "Messages (signMessage / verifyMessage)"
+        - "Keys / addresses (generateWif, deriveAddress, validate*)"
+        - "Amounts / units (parseSats, toCoins, toSafeNumber)"
+        - "UTXO selection / decode"
+        - "Bundle / types / install"
+        - Not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: loadbearing
+    attributes:
+      label: Load-bearing checks
+      description: The two invariants this SDK exists to protect.
+      options:
+        - label: This involves a money/amount field, and I saw a wrong amount or a precision loss
+          required: false
+        - label: This involves the signed bytes (wrong output/address/amount, or the daemon rejected the tx)
+          required: false
+
+  - type: input
+    id: pkg-version
+    attributes:
+      label: "@chainvue/verus-sdk version"
+      placeholder: 0.5.1
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Node version & OS
+      description: Runtime floor is Node 18; the test toolchain needs ≥ 20.19.
+      placeholder: Node 22.4.0 / macOS 14
+    validations:
+      required: true
+
+  - type: dropdown
+    id: verified
+    attributes:
+      label: Did you reproduce under plain `node` (not only a bundler / vitest)?
+      description: The resolver in some toolchains has masked real bugs; a plain-node repro is far more useful.
+      options:
+        - "Yes — plain node"
+        - "No — via a bundler / framework"
+        - "Not sure"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error / stack trace
+      description: Full error, including the `code` if it's a `VerusError` subclass. **Redact any key material.**
+      render: shell
+    validations:
+      required: false
