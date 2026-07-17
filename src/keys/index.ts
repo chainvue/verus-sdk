@@ -21,8 +21,12 @@ export function validateWif(wif: string): { valid: boolean; error?: string } {
       return { valid: false, error: 'Invalid WIF length' };
     }
 
+    // Only the Verus WIF version byte (0xbc) is valid. The Bitcoin mainnet
+    // prefix (0x80) was previously accepted, but 0x80 is never a valid Verus
+    // key: the signer (ECPair.fromWIF with the Verus network) rejects it, so
+    // accepting it here reports a false "valid" that only fails later at signing.
     const prefix = decoded[0];
-    if (prefix !== WIF_PREFIX && prefix !== 0x80) {
+    if (prefix !== WIF_PREFIX) {
       return { valid: false, error: `Invalid WIF prefix: ${prefix}` };
     }
 
