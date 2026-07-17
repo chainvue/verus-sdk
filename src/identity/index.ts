@@ -741,6 +741,22 @@ function _buildVrscRegistration(
   const expectedImplicitFee =
     commitUtxo.satoshis + totalFee - totalReferralPayments + selection.fee;
 
+  // Independent value-conservation check on the assembled transaction: recompute
+  // the native fee straight from inputs and outputs and require it to equal the
+  // fee this path intends to pay. buildAndSign has the same guard; registration
+  // moves the largest amounts (the registration fee is burned as implicit fee),
+  // so a selection/accounting slip must fail loudly here instead of being paid
+  // to miners.
+  const assembledNativeFee =
+    allUtxos.reduce((sum, u) => sum + u.satoshis, 0n) -
+    unsignedTx.outs.reduce((sum: bigint, o: { value: number }) => sum + BigInt(o.value), 0n);
+  if (assembledNativeFee !== expectedImplicitFee) {
+    throw new TransactionBuildError(
+      `identity registration value conservation failed: assembled native fee ${assembledNativeFee} sat ` +
+        `!= intended ${expectedImplicitFee} sat`,
+    );
+  }
+
   const { signedTx, txid } = signTransactionSmart(
     unsignedTx.toHex(),
     params.wif,
