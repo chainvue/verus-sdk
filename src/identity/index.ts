@@ -43,7 +43,7 @@ import {
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
-import { signTransactionSmart, getNetwork, type VerusNetwork } from '../signing/index.js';
+import { signTransactionSmart, getNetwork, resolveExpiryHeight, type VerusNetwork } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
@@ -557,7 +557,7 @@ export function buildAndSignCommitment(
 
   const txb = new TransactionBuilder(verusNetwork);
   txb.setVersion(4);
-  txb.setExpiryHeight(params.expiryHeight || 0);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
 
   for (const utxo of selection.selected) {
@@ -697,7 +697,7 @@ function _buildVrscRegistration(
 
   const txb = new TransactionBuilder(network);
   txb.setVersion(4);
-  txb.setExpiryHeight(params.expiryHeight || 0);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
 
   const commitUtxo = params.commitmentUtxo;
@@ -823,7 +823,7 @@ function _buildSubIdRegistration(
 
   const txb = new TransactionBuilder(network);
   txb.setVersion(4);
-  txb.setExpiryHeight(params.expiryHeight || 0);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
 
   const commitUtxo = params.commitmentUtxo;
@@ -971,7 +971,7 @@ export function buildAndSignIdentityUpdate(
       break;
     }
     case 'unlock': {
-      identity.unlock(new BN(0), new BN(params.expiryHeight || 0));
+      identity.unlock(new BN(0), new BN(resolveExpiryHeight(params.expiryHeight)));
       break;
     }
   }
@@ -980,7 +980,7 @@ export function buildAndSignIdentityUpdate(
   const unfundedHex = createUnfundedIdentityUpdate(
     identityBuf.toString('hex'),
     verusNetwork,
-    params.expiryHeight || 0,
+    resolveExpiryHeight(params.expiryHeight),
   );
 
   const selection = selectUtxos(
@@ -995,7 +995,7 @@ export function buildAndSignIdentityUpdate(
 
   const txb = new TransactionBuilder(verusNetwork);
   txb.setVersion(4);
-  txb.setExpiryHeight(params.expiryHeight || 0);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
 
   for (const utxo of selection.selected) {

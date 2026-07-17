@@ -133,6 +133,7 @@ jobs:
               amount: 90_000_000n,
               utxos: [{ txid: "ab".repeat(32), outputIndex: 0, satoshis: 100_000_000n, script }],
               changeAddress: address,
+              expiryHeight: 0,
             });
             if (!/^[0-9a-f]+$/.test(result.signedTx)) throw new Error("no signed hex");
             const summary = utils.summarizeSignedTransaction(result.signedTx, "testnet");

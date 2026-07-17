@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildAndSign, transfer, transferToken, sendCurrency } from '../src/transfer/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
-import { InsufficientFundsError, InvalidAddressError } from '../src/errors.js';
+import { InsufficientFundsError, InvalidAddressError, TransactionBuildError } from '../src/errors.js';
 import { NETWORK_CONFIG } from '../src/constants/index.js';
 
 const TEST_WIF = 'UusoQWsobQKUkezgBJa22D9G4t9Avo6k8wD5UUxmmfAEoTN8bawc';
@@ -21,6 +21,7 @@ describe('transfer', () => {
       const script = makeP2PKHScript(TEST_ADDR);
       const result = buildAndSign({
         wif: TEST_WIF,
+        expiryHeight: 0,
         inputs: [{
           txid: 'a'.repeat(64),
           vout: 0,
@@ -42,6 +43,7 @@ describe('transfer', () => {
       const script = makeP2PKHScript(TEST_ADDR);
       const result = buildAndSign({
         wif: TEST_WIF,
+        expiryHeight: 0,
         inputs: [{
           txid: 'b'.repeat(64),
           vout: 0,
@@ -63,6 +65,7 @@ describe('transfer', () => {
       expect(() =>
         buildAndSign({
           wif: TEST_WIF,
+          expiryHeight: 0,
           inputs: [{
             txid: 'c'.repeat(64),
             vout: 0,
@@ -87,13 +90,13 @@ describe('transfer', () => {
       txid: 'a'.repeat(64),
       outputIndex: 0,
       satoshis: 100_000_000n,
-      script: addressToScriptPubKey(TEST_ADDR).toString('hex'),
+      script: makeP2PKHScript(TEST_ADDR),
     };
 
     it('transfer() to an i-address throws instead of burning to a P2PKH output', () => {
       expect(() =>
         transfer(
-          { wif: TEST_WIF, to: TEST_IADDR, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR },
+          { wif: TEST_WIF, to: TEST_IADDR, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: 0 },
           'testnet',
         ),
       ).toThrow(InvalidAddressError);
@@ -102,7 +105,7 @@ describe('transfer', () => {
     it('transferToken() (default PKH) to an i-address throws', () => {
       expect(() =>
         transferToken(
-          { wif: TEST_WIF, to: TEST_IADDR, amount: 90_000n, currency: TESTNET_SYSTEM_ID, utxos: [nativeUtxo], changeAddress: TEST_ADDR },
+          { wif: TEST_WIF, to: TEST_IADDR, amount: 90_000n, currency: TESTNET_SYSTEM_ID, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: 0 },
           'testnet',
         ),
       ).toThrow(InvalidAddressError);
@@ -116,6 +119,7 @@ describe('transfer', () => {
             outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 90_000n, address: TEST_ADDR, addressType: 'ID' }],
             utxos: [nativeUtxo],
             changeAddress: TEST_ADDR,
+            expiryHeight: 0,
           },
           'testnet',
         ),
@@ -129,6 +133,7 @@ describe('transfer', () => {
           outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 90_000n, address: TEST_ADDR_B, addressType: 'PKH' }],
           utxos: [nativeUtxo],
           changeAddress: TEST_ADDR,
+          expiryHeight: 0,
         },
         'testnet',
       );
@@ -144,10 +149,43 @@ describe('transfer', () => {
           outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 90_000n, address: TEST_IADDR, addressType: 'ID' }],
           utxos: [nativeUtxo],
           changeAddress: TEST_ADDR,
+          expiryHeight: 0,
         },
         'testnet',
       );
       expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
+    });
+  });
+
+  // expiryHeight must be an explicit choice: omitting it previously produced a
+  // never-expiring transaction (nExpiryHeight 0) silently. It is now required;
+  // an explicit 0 opts into never-expiring.
+  describe('expiryHeight is required', () => {
+    const nativeUtxo = {
+      txid: 'a'.repeat(64),
+      outputIndex: 0,
+      satoshis: 100_000_000n,
+      script: makeP2PKHScript(TEST_ADDR),
+    };
+
+    it('throws when expiryHeight is omitted', () => {
+      expect(() =>
+        // @ts-expect-error deliberately omitting the now-required field
+        transfer({ wif: TEST_WIF, to: TEST_ADDR_B, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR }, 'testnet'),
+      ).toThrow(TransactionBuildError);
+    });
+
+    it('throws on a negative or non-integer expiryHeight', () => {
+      expect(() =>
+        transfer({ wif: TEST_WIF, to: TEST_ADDR_B, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: -1 }, 'testnet'),
+      ).toThrow(TransactionBuildError);
+    });
+
+    it('accepts an explicit expiryHeight (including 0 = never expires)', () => {
+      const bounded = transfer({ wif: TEST_WIF, to: TEST_ADDR_B, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: 1_500_020 }, 'testnet');
+      expect(bounded.txid).toMatch(/^[0-9a-f]{64}$/);
+      const never = transfer({ wif: TEST_WIF, to: TEST_ADDR_B, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: 0 }, 'testnet');
+      expect(never.txid).toMatch(/^[0-9a-f]{64}$/);
     });
   });
 });
