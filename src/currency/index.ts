@@ -22,7 +22,7 @@ import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { toSafeNumber } from '../utils/index.js';
-import { identityPaymentScript } from '../identity/index.js';
+import { identityPaymentScript, assertWifIsPrimary } from '../identity/index.js';
 import { validateWif } from '../keys/index.js';
 import { TransactionBuildError, InvalidWifError } from '../errors.js';
 import type { Utxo, DefineCurrencyParams, DefineCurrencyResult } from '../types/index.js';
@@ -62,6 +62,11 @@ export function defineCurrency(
   // Parse identity and set FLAG_ACTIVECURRENCY
   const identity = new Identity();
   identity.fromBuffer(Buffer.from(params.identityHex, 'hex'));
+
+  // A currency definition spends the identity input under primary authority.
+  // The fork signs it with whatever WIF it's handed, so a WIF that doesn't
+  // control the identity yields a tx the daemon rejects only at broadcast.
+  assertWifIsPrimary(params.wif, identity, verusNetwork);
 
   if (!identity.hasActiveCurrency()) {
     const currentFlags = identity.flags.toNumber();
