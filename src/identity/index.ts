@@ -982,6 +982,18 @@ function _buildSubIdRegistration(
   const unsignedTx = txb.buildIncomplete();
   const allUtxos: Utxo[] = [commitUtxo, ...selection.selected];
 
+  // Native value conservation. The parent-currency registration fee is a token
+  // reserve-transfer (selection returns any excess as token change), so the
+  // NATIVE fee this path pays is the commitment input's value (folded to fee,
+  // like VRSC registration) + the native import fee + the miner fee. Verified
+  // live on VRSCTEST: a sub-ID under `ownora` (1.0 token fee) paid 0.02 native.
+  assertNativeConservation(
+    allUtxos,
+    unsignedTx.outs,
+    commitUtxo.satoshis + nativeImportFee + selection.fee,
+    'sub-ID registration',
+  );
+
   const { signedTx, txid } = signTransactionSmart(
     unsignedTx.toHex(),
     params.wif,
