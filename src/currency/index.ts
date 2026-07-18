@@ -23,7 +23,8 @@ import { signTransactionSmart, getNetwork, resolveExpiryHeight } from '../signin
 import { selectUtxos } from '../utxo/index.js';
 import { toSafeNumber } from '../utils/index.js';
 import { identityPaymentScript } from '../identity/index.js';
-import { TransactionBuildError } from '../errors.js';
+import { validateWif } from '../keys/index.js';
+import { TransactionBuildError, InvalidWifError } from '../errors.js';
 import type { Utxo, DefineCurrencyParams, DefineCurrencyResult } from '../types/index.js';
 
 const { completeFundedIdentityUpdate } = smarttxs;
@@ -37,6 +38,22 @@ export function defineCurrency(
   params: DefineCurrencyParams,
   network: Network
 ): DefineCurrencyResult {
+  // Validate inputs at the boundary (this path previously skipped all of it and
+  // failed later with a raw ECPair/selection error).
+  const wifCheck = validateWif(params.wif);
+  if (!wifCheck.valid) {
+    throw new InvalidWifError(wifCheck.error);
+  }
+  if (!params.identityHex) {
+    throw new TransactionBuildError('identityHex is required');
+  }
+  if (!params.utxos || params.utxos.length === 0) {
+    throw new TransactionBuildError('At least one funding UTXO is required');
+  }
+  if (!params.currencyDefScript) {
+    throw new TransactionBuildError('currencyDefScript is required');
+  }
+
   const verusNetwork = getNetwork(network === 'testnet');
   const networkConfig = NETWORK_CONFIG[network];
   const systemId = networkConfig.chainId;
