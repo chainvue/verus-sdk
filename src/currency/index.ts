@@ -54,7 +54,9 @@ export function defineCurrency(
   const identityOutputScript = identityScript.toBuffer();
   const currencyDefScript = Buffer.from(params.currencyDefScript, 'hex');
 
-  // Select funding UTXOs
+  // Select funding UTXOs. The identity + currency-definition outputs can be
+  // large; size the fee from their real byte length so the tx isn't estimated
+  // below the relay minimum.
   const selection = selectUtxos(
     params.utxos,
     currencyDefValue,
@@ -63,6 +65,7 @@ export function defineCurrency(
     systemId,
     undefined,
     true,
+    identityOutputScript.length + currencyDefScript.length,
   );
 
   // Build transaction

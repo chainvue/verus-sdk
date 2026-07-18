@@ -1117,6 +1117,10 @@ export function buildAndSignIdentityUpdate(
     systemId,
     undefined,
     true,
+    // The identity output embeds the full serialized identity (a large
+    // contentMultimap can make it multi-KB); size the fee from its real bytes
+    // so a big update isn't fee-estimated below the relay minimum.
+    unfundedHex.length / 2,
   );
 
   const txb = new TransactionBuilder(verusNetwork);

@@ -40,6 +40,15 @@ describe('utxo', () => {
       const feeSmart = estimateFee(5, 5, undefined, true);
       expect(feeSmart).toBeGreaterThan(feeP2PKH);
     });
+
+    it('scales the fee with pre-built output bytes (large identity outputs)', () => {
+      const base = estimateFee(2, 2, undefined, true);
+      // e.g. an identity output carrying a ~5 KB contentMultimap
+      const withLargeOutput = estimateFee(2, 2, undefined, true, 5000);
+      expect(withLargeOutput).toBeGreaterThan(base);
+      // ~5000 bytes at the default 10000 sat/KB ≈ +50000 sat
+      expect(withLargeOutput - base).toBeGreaterThanOrEqual(45_000n);
+    });
   });
 
   describe('selectUtxos', () => {
