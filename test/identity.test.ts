@@ -16,6 +16,8 @@ import {
   isVRSCParent,
   prepareNameCommitment,
   buildAndSignCommitment,
+  buildRegistrationFeeOutput,
+  buildTokenChangeOutput,
 } from '../src/identity/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
 import { getNetwork } from '../src/signing/index.js';
@@ -132,6 +134,28 @@ describe('identity', () => {
       const iAddr = deriveIdentityAddress('referrer', SYSTEM_ID);
       const script = buildReferralPaymentScript(iAddr);
       expect(script.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('buildRegistrationFeeOutput (sub-ID fee)', () => {
+    // Broadcast-verified on VRSCTEST: the daemon pays the sub-ID registration
+    // fee as a plain reserve output (EVAL_RESERVE_OUTPUT) holding the fee token
+    // AT the parent currency's i-address, with ZERO native value — identical to
+    // a token-change output pointed at the parent. The prior implementation
+    // built a CReserveTransfer carrying 0.0002 native, which the daemon never
+    // accepted. (Accepted registration: sdke2e1.ownora-nft@, block 1152284.)
+    const parent = deriveIdentityAddress('pecu', SYSTEM_ID);
+    const feeAmount = 100_000_000n; // 1.0 of the parent currency
+
+    it('carries zero native value (not the reserve-transfer fee)', () => {
+      const out = buildRegistrationFeeOutput(parent, feeAmount, SYSTEM_ID, TEST_ADDR);
+      expect(out.nativeValue).toBe(0n);
+    });
+
+    it('is a reserve output of the fee token at the parent currency address', () => {
+      const fee = buildRegistrationFeeOutput(parent, feeAmount, SYSTEM_ID, TEST_ADDR);
+      const equivalent = buildTokenChangeOutput(parent, new Map([[parent, feeAmount]]));
+      expect(fee.script.toString('hex')).toBe(equivalent.script.toString('hex'));
     });
   });
 
