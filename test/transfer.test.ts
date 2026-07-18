@@ -181,6 +181,12 @@ describe('transfer', () => {
       ).toThrow(TransactionBuildError);
     });
 
+    it('throws on an expiryHeight at/above the Sapling cap (e.g. a timestamp)', () => {
+      expect(() =>
+        transfer({ wif: TEST_WIF, to: TEST_ADDR_B, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: 1_700_000_000 }, 'testnet'),
+      ).toThrow(TransactionBuildError);
+    });
+
     it('accepts an explicit expiryHeight (including 0 = never expires)', () => {
       const bounded = transfer({ wif: TEST_WIF, to: TEST_ADDR_B, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: 1_500_020 }, 'testnet');
       expect(bounded.txid).toMatch(/^[0-9a-f]{64}$/);

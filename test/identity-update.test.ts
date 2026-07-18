@@ -244,4 +244,16 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(() => buildTokenChangeOutput('not-a-real-address', new Map([[token, 100n]]))).toThrow();
     });
   });
+
+  describe('minSigs validation', () => {
+    it('rejects minSigs greater than the number of primary addresses', () => {
+      const params = makeUpdateParams('sigshi', { primaryAddresses: [TEST_ADDRESS_B], minSigs: 2 });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+
+    it('rejects minSigs of 0', () => {
+      const params = makeUpdateParams('sigszero', { primaryAddresses: [TEST_ADDRESS_B], minSigs: 0 });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+  });
 });
