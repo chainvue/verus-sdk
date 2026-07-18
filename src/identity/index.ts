@@ -43,7 +43,7 @@ import {
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
-import { signTransactionSmart, getNetwork, type VerusNetwork } from '../signing/index.js';
+import { signTransactionSmart, getNetwork, resolveExpiryHeight, type VerusNetwork } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
@@ -557,7 +557,7 @@ export function buildAndSignCommitment(
 
   const txb = new TransactionBuilder(verusNetwork);
   txb.setVersion(4);
-  txb.setExpiryHeight(params.expiryHeight || 0);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
 
   for (const utxo of selection.selected) {
@@ -697,7 +697,7 @@ function _buildVrscRegistration(
 
   const txb = new TransactionBuilder(network);
   txb.setVersion(4);
-  txb.setExpiryHeight(params.expiryHeight || 0);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
 
   const commitUtxo = params.commitmentUtxo;
@@ -740,6 +740,22 @@ function _buildVrscRegistration(
   // intended absolute fee or build() throws "Transaction has absurd fees".
   const expectedImplicitFee =
     commitUtxo.satoshis + totalFee - totalReferralPayments + selection.fee;
+
+  // Independent value-conservation check on the assembled transaction: recompute
+  // the native fee straight from inputs and outputs and require it to equal the
+  // fee this path intends to pay. buildAndSign has the same guard; registration
+  // moves the largest amounts (the registration fee is burned as implicit fee),
+  // so a selection/accounting slip must fail loudly here instead of being paid
+  // to miners.
+  const assembledNativeFee =
+    allUtxos.reduce((sum, u) => sum + u.satoshis, 0n) -
+    unsignedTx.outs.reduce((sum: bigint, o: { value: number }) => sum + BigInt(o.value), 0n);
+  if (assembledNativeFee !== expectedImplicitFee) {
+    throw new TransactionBuildError(
+      `identity registration value conservation failed: assembled native fee ${assembledNativeFee} sat ` +
+        `!= intended ${expectedImplicitFee} sat`,
+    );
+  }
 
   const { signedTx, txid } = signTransactionSmart(
     unsignedTx.toHex(),
@@ -807,7 +823,7 @@ function _buildSubIdRegistration(
 
   const txb = new TransactionBuilder(network);
   txb.setVersion(4);
-  txb.setExpiryHeight(params.expiryHeight || 0);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
 
   const commitUtxo = params.commitmentUtxo;
@@ -906,6 +922,15 @@ export function buildAndSignIdentityUpdate(
       }
       if (params.contentMap) {
         for (const [key, value] of Object.entries(params.contentMap)) {
+          // Buffer.from(_, 'hex') silently drops non-hex characters and
+          // truncates odd-length input, so a malformed value would be committed
+          // to the identity on-chain as wrong/empty bytes with no error. Reject
+          // it instead.
+          if (!/^[0-9a-fA-F]*$/.test(value) || value.length % 2 !== 0) {
+            throw new TransactionBuildError(
+              `contentMap["${key}"] must be an even-length hex string (got ${JSON.stringify(value)})`,
+            );
+          }
           identity.content_map.set(key, Buffer.from(value, 'hex'));
         }
       }
@@ -946,7 +971,7 @@ export function buildAndSignIdentityUpdate(
       break;
     }
     case 'unlock': {
-      identity.unlock(new BN(0), new BN(params.expiryHeight || 0));
+      identity.unlock(new BN(0), new BN(resolveExpiryHeight(params.expiryHeight)));
       break;
     }
   }
@@ -955,7 +980,7 @@ export function buildAndSignIdentityUpdate(
   const unfundedHex = createUnfundedIdentityUpdate(
     identityBuf.toString('hex'),
     verusNetwork,
-    params.expiryHeight || 0,
+    resolveExpiryHeight(params.expiryHeight),
   );
 
   const selection = selectUtxos(
@@ -970,7 +995,7 @@ export function buildAndSignIdentityUpdate(
 
   const txb = new TransactionBuilder(verusNetwork);
   txb.setVersion(4);
-  txb.setExpiryHeight(params.expiryHeight || 0);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
 
   for (const utxo of selection.selected) {

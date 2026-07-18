@@ -28,6 +28,14 @@ describe('keys', () => {
       expect(validateWif(TEST_WIF_B)).toEqual({ valid: true });
     });
 
+    it('rejects a Bitcoin-mainnet WIF (0x80 is never a valid Verus key)', () => {
+      // Canonical valid Bitcoin mainnet WIF (version byte 0x80). It decodes
+      // cleanly, so it reaches the prefix check — which must now reject it,
+      // matching the signer (ECPair.fromWIF with the Verus network throws).
+      const bitcoinWif = 'KwdMAjGmerYanjeui5SHS7JkmpZvVipYvB2LJGU1ZxJwYvP98617';
+      expect(validateWif(bitcoinWif).valid).toBe(false);
+    });
+
     it('should reject an invalid WIF', () => {
       const result = validateWif('not-a-wif');
       expect(result.valid).toBe(false);

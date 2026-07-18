@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { buildAndSign } from '../src/transfer/index.js';
+import { buildAndSign, transfer, transferToken, sendCurrency } from '../src/transfer/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
-import { InsufficientFundsError } from '../src/errors.js';
+import { InsufficientFundsError, InvalidAddressError, TransactionBuildError } from '../src/errors.js';
+import { NETWORK_CONFIG } from '../src/constants/index.js';
 
 const TEST_WIF = 'UusoQWsobQKUkezgBJa22D9G4t9Avo6k8wD5UUxmmfAEoTN8bawc';
 const TEST_ADDR = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';
 const TEST_ADDR_B = 'RPsQDnaxXgrLjcVBh3SpvCpTabWxAdMdzu';
+// A real VRSCTEST identity i-address (version byte 0x66).
+const TEST_IADDR = 'i4At2tf5ChLPV9pQgt7RiRQSSEdiRouRva';
+const TESTNET_SYSTEM_ID = NETWORK_CONFIG.testnet.chainId;
 
 function makeP2PKHScript(address: string): string {
   return addressToScriptPubKey(address).toString('hex');
@@ -17,6 +21,7 @@ describe('transfer', () => {
       const script = makeP2PKHScript(TEST_ADDR);
       const result = buildAndSign({
         wif: TEST_WIF,
+        expiryHeight: 0,
         inputs: [{
           txid: 'a'.repeat(64),
           vout: 0,
@@ -38,6 +43,7 @@ describe('transfer', () => {
       const script = makeP2PKHScript(TEST_ADDR);
       const result = buildAndSign({
         wif: TEST_WIF,
+        expiryHeight: 0,
         inputs: [{
           txid: 'b'.repeat(64),
           vout: 0,
@@ -59,6 +65,7 @@ describe('transfer', () => {
       expect(() =>
         buildAndSign({
           wif: TEST_WIF,
+          expiryHeight: 0,
           inputs: [{
             txid: 'c'.repeat(64),
             vout: 0,
@@ -72,6 +79,113 @@ describe('transfer', () => {
           fee: 10_000n,
         }, 'testnet')
       ).toThrow(InsufficientFundsError);
+    });
+  });
+
+  // Regression: an i-address passed on the PKH path was silently stripped to
+  // its hash and paid to an uncontrollable R-address (verified live on VRSCTEST
+  // — the daemon accepted the tx, funds lost). parseAddress must fail closed.
+  describe('address-type validation (i-address burn regression)', () => {
+    const nativeUtxo = {
+      txid: 'a'.repeat(64),
+      outputIndex: 0,
+      satoshis: 100_000_000n,
+      script: makeP2PKHScript(TEST_ADDR),
+    };
+
+    it('transfer() to an i-address throws instead of burning to a P2PKH output', () => {
+      expect(() =>
+        transfer(
+          { wif: TEST_WIF, to: TEST_IADDR, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: 0 },
+          'testnet',
+        ),
+      ).toThrow(InvalidAddressError);
+    });
+
+    it('transferToken() (default PKH) to an i-address throws', () => {
+      expect(() =>
+        transferToken(
+          { wif: TEST_WIF, to: TEST_IADDR, amount: 90_000n, currency: TESTNET_SYSTEM_ID, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: 0 },
+          'testnet',
+        ),
+      ).toThrow(InvalidAddressError);
+    });
+
+    it("sendCurrency addressType 'ID' with an R-address throws (reverse mismatch)", () => {
+      expect(() =>
+        sendCurrency(
+          {
+            wif: TEST_WIF,
+            outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 90_000n, address: TEST_ADDR, addressType: 'ID' }],
+            utxos: [nativeUtxo],
+            changeAddress: TEST_ADDR,
+            expiryHeight: 0,
+          },
+          'testnet',
+        ),
+      ).toThrow(InvalidAddressError);
+    });
+
+    it('the happy path still builds: native PKH send to an R-address', () => {
+      const result = sendCurrency(
+        {
+          wif: TEST_WIF,
+          outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 90_000n, address: TEST_ADDR_B, addressType: 'PKH' }],
+          utxos: [nativeUtxo],
+          changeAddress: TEST_ADDR,
+          expiryHeight: 0,
+        },
+        'testnet',
+      );
+      expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it("addressType 'ID' accepts a valid i-address (parse succeeds past validation)", () => {
+      // Native to an identity is a legitimate DEST_ID output; the address check
+      // must not reject a correct i-address. It builds a signed tx.
+      const result = sendCurrency(
+        {
+          wif: TEST_WIF,
+          outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 90_000n, address: TEST_IADDR, addressType: 'ID' }],
+          utxos: [nativeUtxo],
+          changeAddress: TEST_ADDR,
+          expiryHeight: 0,
+        },
+        'testnet',
+      );
+      expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
+    });
+  });
+
+  // expiryHeight must be an explicit choice: omitting it previously produced a
+  // never-expiring transaction (nExpiryHeight 0) silently. It is now required;
+  // an explicit 0 opts into never-expiring.
+  describe('expiryHeight is required', () => {
+    const nativeUtxo = {
+      txid: 'a'.repeat(64),
+      outputIndex: 0,
+      satoshis: 100_000_000n,
+      script: makeP2PKHScript(TEST_ADDR),
+    };
+
+    it('throws when expiryHeight is omitted', () => {
+      expect(() =>
+        // @ts-expect-error deliberately omitting the now-required field
+        transfer({ wif: TEST_WIF, to: TEST_ADDR_B, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR }, 'testnet'),
+      ).toThrow(TransactionBuildError);
+    });
+
+    it('throws on a negative or non-integer expiryHeight', () => {
+      expect(() =>
+        transfer({ wif: TEST_WIF, to: TEST_ADDR_B, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: -1 }, 'testnet'),
+      ).toThrow(TransactionBuildError);
+    });
+
+    it('accepts an explicit expiryHeight (including 0 = never expires)', () => {
+      const bounded = transfer({ wif: TEST_WIF, to: TEST_ADDR_B, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: 1_500_020 }, 'testnet');
+      expect(bounded.txid).toMatch(/^[0-9a-f]{64}$/);
+      const never = transfer({ wif: TEST_WIF, to: TEST_ADDR_B, amount: 90_000n, utxos: [nativeUtxo], changeAddress: TEST_ADDR, expiryHeight: 0 }, 'testnet');
+      expect(never.txid).toMatch(/^[0-9a-f]{64}$/);
     });
   });
 });

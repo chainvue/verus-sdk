@@ -37,6 +37,7 @@ describe('currency', () => {
       currencyDefScript: MOCK_CURRENCY_DEF_SCRIPT,
       utxos: [makeFundingUtxo('aa', 100_000_000n)],
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -59,6 +60,7 @@ describe('currency', () => {
       currencyDefScript: MOCK_CURRENCY_DEF_SCRIPT,
       utxos: [makeFundingUtxo('aa', 100_000_000n)],
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     // Verify the TX was built successfully (flag was set internally)
@@ -77,6 +79,7 @@ describe('currency', () => {
       currencyDefValue: 1_000_000n, // 0.01 VRSC output value on currency def
       utxos: [makeFundingUtxo('aa', 100_000_000n)],
       changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
     }, NETWORK);
 
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -95,6 +98,7 @@ describe('currency', () => {
         currencyDefValue: 500_000_000_000n, // 5000 VRSC
         utxos: [makeFundingUtxo('aa', 1_000n)], // only 0.00001 VRSC
         changeAddress: TEST_ADDRESS,
+        expiryHeight: 0,
       }, NETWORK),
     ).toThrow(/[Ii]nsufficient/);
   });
