@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import bs58check from 'bs58check';
 import {
   validateWif,
   wifToPrivateKey,
@@ -40,6 +41,18 @@ describe('keys', () => {
       const result = validateWif('not-a-wif');
       expect(result.valid).toBe(false);
       expect(result.error).toBeDefined();
+    });
+
+    it('rejects a 34-byte WIF whose compression flag is not 0x01', () => {
+      // Verus prefix (0xbc) + 32 privkey bytes + a bogus flag byte (0x02).
+      // The daemon only ever produces 0x01 here; anything else is malformed
+      // and would fail at signing rather than at this boundary.
+      const bad = bs58check.encode(
+        Buffer.concat([Buffer.from([0xbc]), Buffer.alloc(32, 0x11), Buffer.from([0x02])]),
+      );
+      const result = validateWif(bad);
+      expect(result.valid).toBe(false);
+      expect(result.error).toMatch(/compression flag/);
     });
   });
 
