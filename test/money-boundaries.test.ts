@@ -7,6 +7,7 @@
  * selectUtxos, and the typed errors at the address/amount boundaries.
  */
 import { describe, it, expect } from 'vitest';
+import bs58check from 'bs58check';
 import { opcodes } from '@bitgo/utxo-lib';
 import { parseSats, toSatoshis, toCoins, toSafeNumber, addressToScriptPubKey } from '../src/utils/index.js';
 import { selectUtxos, decodeUtxo, estimateFee } from '../src/utxo/index.js';
@@ -215,5 +216,13 @@ describe('address boundary — typed InvalidAddressError', () => {
 
   it('accepts a valid R-address', () => {
     expect(addressToScriptPubKey(CHANGE_ADDR).length).toBe(25);
+  });
+
+  it('rejects a P2PKH-prefixed address whose payload is not 20 bytes', () => {
+    // Valid base58check, correct R-address version byte (0x3c), but only 19
+    // payload bytes. Without the length guard this emitted a PUSH20 opcode over
+    // 19 bytes — a malformed script whose length prefix lies about its data.
+    const shortPayload = bs58check.encode(Buffer.concat([Buffer.from([0x3c]), Buffer.alloc(19, 0x11)]));
+    expect(() => addressToScriptPubKey(shortPayload)).toThrow(InvalidAddressError);
   });
 });
