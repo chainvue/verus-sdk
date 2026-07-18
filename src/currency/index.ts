@@ -22,6 +22,7 @@ import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { toSafeNumber } from '../utils/index.js';
+import { TransactionBuildError } from '../errors.js';
 import type { Utxo, DefineCurrencyParams, DefineCurrencyResult } from '../types/index.js';
 
 const { completeFundedIdentityUpdate } = smarttxs;
@@ -92,6 +93,14 @@ export function defineCurrency(
   // Add the previous identity UTXO as last input
   const prevOutScripts = selection.selected.map(u => Buffer.from(u.script, 'hex'));
   const idUtxo = params.identityUtxo;
+  // Any native value on the identity input would be burned to miner fee (the
+  // recreated identity output is value 0). Identity outputs normally carry 0.
+  if (idUtxo.satoshis !== 0n) {
+    throw new TransactionBuildError(
+      `identityUtxo carries ${idUtxo.satoshis} native satoshis, which would be burned to miner fee ` +
+        `(the recreated identity output is value 0). Spend that value separately first.`,
+    );
+  }
   const completedHex = completeFundedIdentityUpdate(
     fundedHex,
     verusNetwork,

@@ -1119,6 +1119,15 @@ export function buildAndSignIdentityUpdate(
 
   const prevOutScripts = selection.selected.map(u => Buffer.from(u.script, 'hex'));
   const idUtxo = params.identityUtxo;
+  // The identity input is spent and its definition output is recreated with
+  // value 0, so any native value riding on identityUtxo would be silently
+  // burned to miner fee. Identity outputs normally carry 0; fail closed if not.
+  if (idUtxo.satoshis !== 0n) {
+    throw new TransactionBuildError(
+      `identityUtxo carries ${idUtxo.satoshis} native satoshis, which would be burned to miner fee ` +
+        `(the recreated identity output is value 0). Spend that value separately before updating.`,
+    );
+  }
   const completedHex = completeFundedIdentityUpdate(
     fundedHex,
     verusNetwork,

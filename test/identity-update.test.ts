@@ -256,4 +256,19 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
     });
   });
+
+  describe('identityUtxo value guard', () => {
+    it('rejects an identityUtxo carrying native value (would be burned)', () => {
+      const mock = createMockIdentityHex({ name: 'idutxoval' });
+      const params = {
+        wif: TEST_WIF,
+        identityHex: mock.identityHex,
+        identityUtxo: { ...mock.identityUtxo, satoshis: 1_000_000n },
+        utxos: [makeFundingUtxo('aa', 100_000_000n)],
+        changeAddress: TEST_ADDRESS,
+        expiryHeight: 0,
+      };
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+  });
 });
