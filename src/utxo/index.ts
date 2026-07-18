@@ -88,10 +88,15 @@ export function estimateFee(
   numInputs: number,
   numOutputs: number,
   feePerKb: bigint = DEFAULT_FEE_PER_KB,
-  hasSmartOutputs: boolean = false
+  hasSmartOutputs: boolean = false,
+  extraBytes: number = 0
 ): bigint {
   const outputSize = hasSmartOutputs ? SMART_OUTPUT_SIZE : P2PKH_OUTPUT_SIZE;
-  const txSize = TX_OVERHEAD + numInputs * INPUT_SIZE + numOutputs * outputSize;
+  // `extraBytes` accounts for pre-built outputs whose real size dwarfs the
+  // fixed per-output estimate (e.g. an identity output embedding a multi-KB
+  // contentMultimap). Without it a large tx is fee-estimated far below the
+  // relay minimum and the daemon rejects it.
+  const txSize = TX_OVERHEAD + numInputs * INPUT_SIZE + numOutputs * outputSize + extraBytes;
   const fee = (BigInt(txSize) * feePerKb + 999n) / 1000n; // ceil(txSize * feePerKb / 1000)
   return fee > MIN_FEE ? fee : MIN_FEE;
 }
@@ -106,7 +111,8 @@ export function selectUtxos(
   numOutputs: number = 2,
   systemId: string = NETWORK_CONFIG.mainnet.chainId,
   feePerKb: bigint = DEFAULT_FEE_PER_KB,
-  hasSmartOutputs: boolean = false
+  hasSmartOutputs: boolean = false,
+  extraOutputBytes: number = 0
 ): SelectionResult {
   // Reject duplicate outpoints up front. An outpoint can only be spent once, so
   // the same (txid, outputIndex) twice is always a caller error. Left unchecked
@@ -171,23 +177,40 @@ export function selectUtxos(
     }
   }
 
-  // Phase 2: Select UTXOs for native amount + fee
+  // Phase 2: Select UTXOs for native amount + fee.
+  // Prefer pure-native UTXOs so token-carrying UTXOs are only spent when needed;
+  // if one IS pulled in for its native value, its non-native currencies must be
+  // returned as change (below) — otherwise that token value is silently burned.
+  const carriesToken = (u: DecodedUtxo): boolean => {
+    for (const [currency, amount] of u.currencyValues) {
+      if (currency !== systemId && amount > 0n) return true;
+    }
+    return false;
+  };
   const nativeOnly = decoded
     .filter((u) => !selected.includes(u))
-    .sort((a, b) => (b.satoshis > a.satoshis ? 1 : b.satoshis < a.satoshis ? -1 : 0));
+    .sort((a, b) => {
+      const at = carriesToken(a) ? 1 : 0;
+      const bt = carriesToken(b) ? 1 : 0;
+      if (at !== bt) return at - bt; // pure-native first
+      return b.satoshis > a.satoshis ? 1 : b.satoshis < a.satoshis ? -1 : 0;
+    });
 
-  let changeOutputCount = 0;
-  for (const [currency, needed] of remaining) {
-    if (currency !== systemId && needed < 0n) {
-      changeOutputCount++;
+  const countCurrencyChanges = (): number => {
+    let n = 0;
+    for (const [currency, needed] of remaining) {
+      if (currency !== systemId && needed < 0n) n++;
     }
-  }
+    return n;
+  };
+  let changeOutputCount = countCurrencyChanges();
 
   let fee = estimateFee(
     selected.length + 1,
     numOutputs + 1 + changeOutputCount,
     feePerKb,
-    hasSmartOutputs
+    hasSmartOutputs,
+    extraOutputBytes
   );
 
   while (remainingNative + fee > 0n) {
@@ -202,11 +225,20 @@ export function selectUtxos(
     selected.push(next);
     remainingNative -= next.satoshis;
 
+    // Fold any non-native currency carried by this UTXO into `remaining` so it
+    // becomes change (a negative balance) rather than being spent with no output.
+    for (const [currency, amount] of next.currencyValues) {
+      if (currency === systemId || amount <= 0n) continue;
+      remaining.set(currency, (remaining.get(currency) || 0n) - amount);
+    }
+    changeOutputCount = countCurrencyChanges();
+
     fee = estimateFee(
       selected.length,
       numOutputs + 1 + changeOutputCount,
       feePerKb,
-      hasSmartOutputs
+      hasSmartOutputs,
+      extraOutputBytes
     );
   }
 

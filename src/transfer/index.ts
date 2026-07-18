@@ -112,10 +112,16 @@ function parseAddress(address: string, addressType: string): TransferDestination
     case 'ETH': {
       type = DEST_ETH;
       const addr = address.startsWith('0x') ? address.substring(2) : address;
-      destinationBytes = Buffer.from(addr, 'hex');
-      if (destinationBytes.length !== 20) {
-        throw new InvalidAddressError(address, 'ETH destination must be 20 bytes of hex');
+      // Validate the hex explicitly: Buffer.from(_, 'hex') truncates at the
+      // first non-hex character, so a malformed address could otherwise pass the
+      // length check with silently dropped bytes. Note: this checks the format
+      // only — no EIP-55 checksum is enforced (that needs keccak256, a dependency
+      // this SDK deliberately does not carry), so a mistyped but well-formed
+      // 20-byte address is still accepted. Validate the ETH address upstream.
+      if (!/^[0-9a-fA-F]{40}$/.test(addr)) {
+        throw new InvalidAddressError(address, 'ETH destination must be exactly 20 bytes (40 hex chars)');
       }
+      destinationBytes = Buffer.from(addr, 'hex');
       break;
     }
     default:
@@ -193,6 +199,15 @@ export function sendCurrency(
       requiredCurrencies.set(
         out.currency,
         (requiredCurrencies.get(out.currency) || 0n) + out.satoshis,
+      );
+    }
+    // A non-native fee currency must be funded from that currency's own inputs.
+    // It was omitted from selection, so a reserve transfer paying its fee in a
+    // token was under-funded and rejected by the daemon.
+    if (out.feeCurrency !== undefined && out.feeCurrency !== systemId && out.feeSatoshis !== undefined) {
+      requiredCurrencies.set(
+        out.feeCurrency,
+        (requiredCurrencies.get(out.feeCurrency) || 0n) + out.feeSatoshis,
       );
     }
   }

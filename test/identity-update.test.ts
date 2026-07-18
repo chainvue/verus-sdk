@@ -17,7 +17,7 @@ import {
   makeFundingUtxo,
   createMockIdentityHex,
 } from './fixtures/index.js';
-import { deriveIdentityAddress } from '../src/identity/index.js';
+import { deriveIdentityAddress, buildTokenChangeOutput } from '../src/identity/index.js';
 import { TransactionBuildError } from '../src/errors.js';
 
 const SYSTEM_ID = VRSCTEST_SYSTEM_ID;
@@ -119,6 +119,19 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.operation).toBe('update');
     });
+
+    // Same silent-corruption trap as contentMap, via ContentMultiMap.fromJson.
+    it('rejects a non-hex contentMultimap value', () => {
+      const key = deriveIdentityAddress('cmmkey', SYSTEM_ID);
+      const params = makeUpdateParams('cmmbad', { contentMultimap: { [key]: ['deadbeefX9'] } });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+
+    it('rejects an odd-length hex contentMultimap value (also the string form)', () => {
+      const key = deriveIdentityAddress('cmmkey', SYSTEM_ID);
+      const params = makeUpdateParams('cmmodd', { contentMultimap: { [key]: 'abc' } });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
   });
 
   // ─── Lock ──────────────────────────────────────────────
@@ -175,6 +188,24 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.operation).toBe('unlock');
     });
+
+    it('rejects unlock with expiryHeight 0 (would bypass the timelock)', () => {
+      const mock = createMockIdentityHex({ name: 'unlockzero', flags: 2, unlockAfter: 100_000 });
+      expect(() =>
+        buildAndSignIdentityUpdate(
+          {
+            wif: TEST_WIF,
+            identityHex: mock.identityHex,
+            identityUtxo: mock.identityUtxo,
+            utxos: [makeFundingUtxo('aa', 100_000_000n)],
+            changeAddress: TEST_ADDRESS,
+            expiryHeight: 0,
+          },
+          NETWORK,
+          'unlock',
+        ),
+      ).toThrow(TransactionBuildError);
+    });
   });
 
   // ─── Revoke ────────────────────────────────────────────
@@ -204,6 +235,74 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.operation).toBe('recover');
       expect(result.fee).toBeGreaterThan(0n);
+    });
+  });
+
+  // KeyID/IdentityID.fromAddress launder any address to their own version, so a
+  // wrong-kind address silently becomes a different, uncontrollable destination.
+  describe('address-type validation (laundering regression)', () => {
+    const anIdentity = deriveIdentityAddress('sdk-hardening-test', SYSTEM_ID);
+
+    it('rejects an i-address passed as a primaryAddress (would brick the identity)', () => {
+      const params = makeUpdateParams('primbad', { primaryAddresses: [anIdentity] });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+
+    it('rejects an R-address passed as revocationAuthority', () => {
+      const params = makeUpdateParams('authbad', { revocationAuthority: TEST_ADDRESS_B });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'recover')).toThrow(TransactionBuildError);
+    });
+
+    it('buildTokenChangeOutput builds for an i-address change (pay-to-identity) and an R-address, rejects garbage', () => {
+      const token = deriveIdentityAddress('sometoken', SYSTEM_ID);
+      // Both valid kinds succeed; the i-address path routes to the identity
+      // (verified against the daemon) rather than a laundered R-address.
+      expect(() => buildTokenChangeOutput(anIdentity, new Map([[token, 100n]]))).not.toThrow();
+      expect(() => buildTokenChangeOutput(TEST_ADDRESS_B, new Map([[token, 100n]]))).not.toThrow();
+      expect(() => buildTokenChangeOutput('not-a-real-address', new Map([[token, 100n]]))).toThrow();
+    });
+  });
+
+  describe('minSigs validation', () => {
+    it('rejects minSigs greater than the number of primary addresses', () => {
+      const params = makeUpdateParams('sigshi', { primaryAddresses: [TEST_ADDRESS_B], minSigs: 2 });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+
+    it('rejects minSigs of 0', () => {
+      const params = makeUpdateParams('sigszero', { primaryAddresses: [TEST_ADDRESS_B], minSigs: 0 });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+  });
+
+  describe('identityUtxo value guard', () => {
+    it('rejects an identityUtxo carrying native value (would be burned)', () => {
+      const mock = createMockIdentityHex({ name: 'idutxoval' });
+      const params = {
+        wif: TEST_WIF,
+        identityHex: mock.identityHex,
+        identityUtxo: { ...mock.identityUtxo, satoshis: 1_000_000n },
+        utxos: [makeFundingUtxo('aa', 100_000_000n)],
+        changeAddress: TEST_ADDRESS,
+        expiryHeight: 0,
+      };
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+  });
+
+  describe('signer control (WIF must control the identity)', () => {
+    // Valid Verus WIF for TEST_ADDRESS_B — not the mock identity's primary.
+    const OTHER_WIF = 'UtJXdBipt7XKxSe3AKFYhXizA5cgCM1ztQLVDANwHtfERydFEnPG';
+
+    it('rejects a WIF that is not a current primary address (update)', () => {
+      const params = makeUpdateParams('wrongsigner', { wif: OTHER_WIF });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+
+    it('accepts a WIF that is a current primary address', () => {
+      const params = makeUpdateParams('rightsigner', { primaryAddresses: [TEST_ADDRESS_B] });
+      const result = buildAndSignIdentityUpdate(params, NETWORK, 'update');
+      expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
     });
   });
 });

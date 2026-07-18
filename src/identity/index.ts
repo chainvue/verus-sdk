@@ -32,7 +32,7 @@ import {
   nameAndParentAddrToIAddr,
   fromBase58Check,
 } from 'verus-typescript-primitives';
-import { script as bscript, opcodes, TransactionBuilder, Transaction, smarttxs } from '@bitgo/utxo-lib';
+import { script as bscript, opcodes, TransactionBuilder, Transaction, smarttxs, ECPair } from '@bitgo/utxo-lib';
 import {
   NETWORK_CONFIG,
   VERSION_GROUP_ID,
@@ -40,6 +40,8 @@ import {
   DEFAULT_REFERRAL_LEVELS,
   RESERVE_TRANSFER_FEE,
   RESERVE_TRANSFER_EVAL_PKH,
+  PUBKEY_HASH_PREFIX,
+  I_ADDR_VERSION,
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
@@ -72,6 +74,57 @@ const NULL_ID_HASH = Buffer.alloc(HASH160_BYTE_LENGTH, 0);
 const EVAL_IDENTITY_ADVANCEDRESERVATION = 10;
 
 // ─── Script / Hash Builders ────────────────────────────────────────
+
+/**
+ * Assert a base58check address has the expected version byte.
+ *
+ * KeyID.fromAddress / IdentityID.fromAddress discard the version byte and stamp
+ * their own, so an i-address passed where an R-address is expected (or vice
+ * versa) is silently laundered into a different, uncontrollable destination —
+ * e.g. an i-address as a primary key becomes the hash of the identity paid as a
+ * P2PKH nobody controls, permanently bricking the new identity. Validate up
+ * front instead.
+ */
+function assertAddressVersion(address: string, expectedVersion: number, label: string): void {
+  let version: number;
+  try {
+    version = fromBase58Check(address).version;
+  } catch {
+    throw new TransactionBuildError(`${label} is not a valid base58check address: ${JSON.stringify(address)}`);
+  }
+  if (version !== expectedVersion) {
+    const want = expectedVersion === I_ADDR_VERSION ? 'an identity i-address' : 'an R-address';
+    throw new TransactionBuildError(
+      `${label} must be ${want} (version ${expectedVersion}), got version ${version}: ${address}`,
+    );
+  }
+}
+
+/** minSigs must be an integer in [1, number of primary addresses]. */
+function validateMinSigs(minSigs: number, primaryCount: number): void {
+  if (!Number.isInteger(minSigs) || minSigs < 1 || minSigs > primaryCount) {
+    throw new TransactionBuildError(
+      `minSigs must be an integer between 1 and the number of primary addresses (${primaryCount}), got ${minSigs}`,
+    );
+  }
+}
+
+/** Validate the address-typed params shared by identity update/recover. */
+function validateUpdateAddressParams(params: {
+  primaryAddresses?: string[];
+  revocationAuthority?: string;
+  recoveryAuthority?: string;
+}): void {
+  params.primaryAddresses?.forEach((a, i) =>
+    assertAddressVersion(a, PUBKEY_HASH_PREFIX, `primaryAddresses[${i}]`),
+  );
+  if (params.revocationAuthority) {
+    assertAddressVersion(params.revocationAuthority, I_ADDR_VERSION, 'revocationAuthority');
+  }
+  if (params.recoveryAuthority) {
+    assertAddressVersion(params.recoveryAuthority, I_ADDR_VERSION, 'recoveryAuthority');
+  }
+}
 
 /**
  * Generate a random 32-byte salt for name commitment
@@ -376,6 +429,12 @@ export function createIdentityObject(params: {
   parentIAddress: string;
   systemId: string;
 }): Identity {
+  params.primaryAddresses.forEach((addr, i) =>
+    assertAddressVersion(addr, PUBKEY_HASH_PREFIX, `primaryAddresses[${i}]`),
+  );
+  assertAddressVersion(params.revocationAuthority, I_ADDR_VERSION, 'revocationAuthority');
+  assertAddressVersion(params.recoveryAuthority, I_ADDR_VERSION, 'recoveryAuthority');
+  validateMinSigs(params.minSigs ?? 1, params.primaryAddresses.length);
   const primaryKeys = params.primaryAddresses.map(addr => KeyID.fromAddress(addr));
 
   const identity = new Identity({
@@ -458,7 +517,22 @@ export function buildTokenChangeOutput(
   changeAddress: string,
   currencyChanges: Map<string, bigint>,
 ): { script: Buffer; nativeValue: bigint } {
-  const destination = new TxDestination(KeyID.fromAddress(changeAddress));
+  // KeyID.fromAddress launders any address to the R-address form, so token
+  // change to an i-address changeAddress was paid to a transparent script
+  // nobody controls (burned on paths with no funded-transfer validator). Build
+  // a pay-to-identity destination for i-addresses, and reject anything that is
+  // neither an R- nor an i-address rather than silently mis-routing it.
+  const version = fromBase58Check(changeAddress).version;
+  let destination: InstanceType<typeof TxDestination>;
+  if (version === I_ADDR_VERSION) {
+    destination = new TxDestination(IdentityID.fromAddress(changeAddress));
+  } else if (version === PUBKEY_HASH_PREFIX) {
+    destination = new TxDestination(KeyID.fromAddress(changeAddress));
+  } else {
+    throw new TransactionBuildError(
+      `token change address must be an R-address or identity i-address, got version ${version}: ${changeAddress}`,
+    );
+  }
 
   const valueMap = new Map<string, typeof BN.prototype>();
   for (const [currency, amount] of currencyChanges) {
@@ -671,6 +745,16 @@ function _buildVrscRegistration(
       ? params.referralChain
       : commitData.referral ? [commitData.referral] : [];
 
+    // Each entry pays referralAmount = totalFee/(levels+2); more entries than
+    // the chain allows would pay out more than the registration fee, leaving the
+    // transaction under-funded (outputs > inputs).
+    const referralLevels = params.referralLevels ?? DEFAULT_REFERRAL_LEVELS;
+    if (chain.length > referralLevels) {
+      throw new TransactionBuildError(
+        `referralChain has ${chain.length} entries but at most ${referralLevels} referral levels are allowed`,
+      );
+    }
+
     for (const referrerAddr of chain) {
       referralOutputs.push({
         script: buildReferralPaymentScript(referrerAddr),
@@ -679,11 +763,15 @@ function _buildVrscRegistration(
     }
   }
 
-  // requiredNative = full registration fee (referral outputs come out of this total)
-  // implicit fee to miners = totalFee - sum(referral outputs) + txFee
+  // With a referral, the registrant pays the discounted issuer fee, not the full
+  // registration fee — the referral outputs are paid OUT OF the issuer fee (the
+  // referrers take referralAmount each, the rest is the implicit miner fee).
+  // Verified live on VRSCTEST: a 1-referral registration required 80 VRSC total
+  // (20 to the referrer, 60 to the miner), not 100. Funding totalFee overpaid by
+  // exactly (totalFee - issuerFee) every referred registration.
   const totalFee = params.registrationFee ?? DEFAULT_REGISTRATION_FEE;
   const totalReferralPayments = referralOutputs.reduce((sum, o) => sum + o.value, 0n);
-  const requiredNative = totalFee;
+  const requiredNative = hasReferral ? fees.issuerFee : totalFee;
   const numOutputs = 2 + referralOutputs.length + 1;
   const selection = selectUtxos(
     params.utxos,
@@ -739,7 +827,7 @@ function _buildVrscRegistration(
   // client-side fee-rate cap (default 2500 sat/vbyte) must be told the
   // intended absolute fee or build() throws "Transaction has absurd fees".
   const expectedImplicitFee =
-    commitUtxo.satoshis + totalFee - totalReferralPayments + selection.fee;
+    commitUtxo.satoshis + requiredNative - totalReferralPayments + selection.fee;
 
   // Independent value-conservation check on the assembled transaction: recompute
   // the native fee straight from inputs and outputs and require it to equal the
@@ -770,7 +858,10 @@ function _buildVrscRegistration(
     txid,
     fee: selection.fee,
     identityAddress,
-    registrationFee: totalFee - totalReferralPayments,
+    // The registrant's registration outlay: the discounted issuer fee when
+    // referred, the full fee otherwise. (Of this, referralPayments go to the
+    // referrers and the remainder is the implicit miner fee.)
+    registrationFee: requiredNative,
     referralPayments: referralOutputs.length,
     referralAmountEach: fees.referralAmount,
     inputsUsed: allUtxos.length,
@@ -906,12 +997,31 @@ export function buildAndSignIdentityUpdate(
   const identity = new Identity();
   identity.fromBuffer(Buffer.from(params.identityHex, 'hex'));
 
+  // update/lock/unlock are authorized by the identity's primary key(s). The fork
+  // signs CC inputs with whatever key it is given, so a WIF that does not control
+  // the identity would yield a "valid" signed tx the daemon rejects at broadcast.
+  // Verify the signer is a current primary before spending the identity input.
+  // (revoke/recover use the revocation/recovery authority — a separate identity
+  // whose keys we can't check here — so they are excluded.)
+  if (operation === 'update' || operation === 'lock' || operation === 'unlock') {
+    const signerAddress = (ECPair.fromWIF(params.wif, verusNetwork) as { getAddress(): string }).getAddress();
+    const currentPrimaries = (identity.primary_addresses ?? []).map((k) => k.toAddress());
+    if (!currentPrimaries.includes(signerAddress)) {
+      throw new TransactionBuildError(
+        `the provided WIF (${signerAddress}) is not among the identity's primary addresses ` +
+          `[${currentPrimaries.join(', ')}]; it cannot authorize a ${operation}.`,
+      );
+    }
+  }
+
   switch (operation) {
     case 'update': {
+      validateUpdateAddressParams(params);
       if (params.primaryAddresses) {
         identity.setPrimaryAddresses(params.primaryAddresses);
       }
       if (params.minSigs !== undefined) {
+        validateMinSigs(params.minSigs, identity.primary_addresses?.length ?? 0);
         identity.min_sigs = new BN(params.minSigs);
       }
       if (params.revocationAuthority) {
@@ -937,7 +1047,18 @@ export function buildAndSignIdentityUpdate(
       if (params.contentMultimap) {
         const jsonObj: Record<string, string[]> = {};
         for (const [key, value] of Object.entries(params.contentMultimap)) {
-          jsonObj[key] = Array.isArray(value) ? value : [value];
+          const items = Array.isArray(value) ? value : [value];
+          // Same trap as contentMap: ContentMultiMap.fromJson runs
+          // Buffer.from(_, 'hex') on each array entry with no validation, so a
+          // malformed value is silently truncated/emptied and committed on-chain.
+          for (const item of items) {
+            if (!/^[0-9a-fA-F]*$/.test(item) || item.length % 2 !== 0) {
+              throw new TransactionBuildError(
+                `contentMultimap["${key}"] entries must be even-length hex strings (got ${JSON.stringify(item)})`,
+              );
+            }
+          }
+          jsonObj[key] = items;
         }
         identity.content_multimap = ContentMultiMap.fromJson(jsonObj);
       }
@@ -949,6 +1070,7 @@ export function buildAndSignIdentityUpdate(
       break;
     }
     case 'recover': {
+      validateUpdateAddressParams(params);
       identity.unrevoke();
       identity.clearContentMultiMap();
       if (params.primaryAddresses) {
@@ -971,7 +1093,18 @@ export function buildAndSignIdentityUpdate(
       break;
     }
     case 'unlock': {
-      identity.unlock(new BN(0), new BN(resolveExpiryHeight(params.expiryHeight)));
+      // Identity.unlock anchors the remaining lock delay to the tx expiry height
+      // (unlock_after += txExpiryHeight). expiryHeight 0 ("never expires") leaves
+      // the delay unanchored — a relative delay collapses to a past height and
+      // the timelock is effectively bypassed. Require a real height for unlock.
+      const unlockExpiry = resolveExpiryHeight(params.expiryHeight);
+      if (unlockExpiry === 0) {
+        throw new TransactionBuildError(
+          'unlock requires a non-zero expiryHeight (currentBlockHeight + DEFAULT_EXPIRY_DELTA): ' +
+            'the unlock delay is anchored to it, so 0 would bypass the timelock.',
+        );
+      }
+      identity.unlock(new BN(0), new BN(unlockExpiry));
       break;
     }
   }
@@ -991,6 +1124,10 @@ export function buildAndSignIdentityUpdate(
     systemId,
     undefined,
     true,
+    // The identity output embeds the full serialized identity (a large
+    // contentMultimap can make it multi-KB); size the fee from its real bytes
+    // so a big update isn't fee-estimated below the relay minimum.
+    unfundedHex.length / 2,
   );
 
   const txb = new TransactionBuilder(verusNetwork);
@@ -1021,6 +1158,15 @@ export function buildAndSignIdentityUpdate(
 
   const prevOutScripts = selection.selected.map(u => Buffer.from(u.script, 'hex'));
   const idUtxo = params.identityUtxo;
+  // The identity input is spent and its definition output is recreated with
+  // value 0, so any native value riding on identityUtxo would be silently
+  // burned to miner fee. Identity outputs normally carry 0; fail closed if not.
+  if (idUtxo.satoshis !== 0n) {
+    throw new TransactionBuildError(
+      `identityUtxo carries ${idUtxo.satoshis} native satoshis, which would be burned to miner fee ` +
+        `(the recreated identity output is value 0). Spend that value separately before updating.`,
+    );
+  }
   const completedHex = completeFundedIdentityUpdate(
     fundedHex,
     verusNetwork,
