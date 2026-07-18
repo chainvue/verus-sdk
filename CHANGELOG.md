@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.2](https://github.com/chainvue/verus-sdk/compare/v0.6.1...v0.6.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* build native change to an i-address via P2ID in all identity/currency flows ([14f5434](https://github.com/chainvue/verus-sdk/commit/14f543464a5d0f5351238a6fd68d533033fce0d7))
+* control the name commitment with the WIF, not changeAddress ([b914e9c](https://github.com/chainvue/verus-sdk/commit/b914e9cef8c9b41fcf6c960b8c68c64921d128a7))
+* validate contentMultimap keys and defineCurrency inputs at the boundary ([4278a3d](https://github.com/chainvue/verus-sdk/commit/4278a3d75e8cc8d634724ba1159a8e7dfa51a11e))
+* verify WIF control for self-authority revoke/recover ([c8e240a](https://github.com/chainvue/verus-sdk/commit/c8e240aeeaa620c92bf7bd46288ca86fc82061af))
+
 ## [0.6.1](https://github.com/chainvue/verus-sdk/compare/v0.6.0...v0.6.1) (2026-07-18)
 
 
