@@ -171,17 +171,33 @@ export function selectUtxos(
     }
   }
 
-  // Phase 2: Select UTXOs for native amount + fee
+  // Phase 2: Select UTXOs for native amount + fee.
+  // Prefer pure-native UTXOs so token-carrying UTXOs are only spent when needed;
+  // if one IS pulled in for its native value, its non-native currencies must be
+  // returned as change (below) — otherwise that token value is silently burned.
+  const carriesToken = (u: DecodedUtxo): boolean => {
+    for (const [currency, amount] of u.currencyValues) {
+      if (currency !== systemId && amount > 0n) return true;
+    }
+    return false;
+  };
   const nativeOnly = decoded
     .filter((u) => !selected.includes(u))
-    .sort((a, b) => (b.satoshis > a.satoshis ? 1 : b.satoshis < a.satoshis ? -1 : 0));
+    .sort((a, b) => {
+      const at = carriesToken(a) ? 1 : 0;
+      const bt = carriesToken(b) ? 1 : 0;
+      if (at !== bt) return at - bt; // pure-native first
+      return b.satoshis > a.satoshis ? 1 : b.satoshis < a.satoshis ? -1 : 0;
+    });
 
-  let changeOutputCount = 0;
-  for (const [currency, needed] of remaining) {
-    if (currency !== systemId && needed < 0n) {
-      changeOutputCount++;
+  const countCurrencyChanges = (): number => {
+    let n = 0;
+    for (const [currency, needed] of remaining) {
+      if (currency !== systemId && needed < 0n) n++;
     }
-  }
+    return n;
+  };
+  let changeOutputCount = countCurrencyChanges();
 
   let fee = estimateFee(
     selected.length + 1,
@@ -201,6 +217,14 @@ export function selectUtxos(
 
     selected.push(next);
     remainingNative -= next.satoshis;
+
+    // Fold any non-native currency carried by this UTXO into `remaining` so it
+    // becomes change (a negative balance) rather than being spent with no output.
+    for (const [currency, amount] of next.currencyValues) {
+      if (currency === systemId || amount <= 0n) continue;
+      remaining.set(currency, (remaining.get(currency) || 0n) - amount);
+    }
+    changeOutputCount = countCurrencyChanges();
 
     fee = estimateFee(
       selected.length,
