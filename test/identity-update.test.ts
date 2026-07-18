@@ -305,4 +305,15 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
     });
   });
+
+  describe('i-address changeAddress (native change)', () => {
+    it('builds native change to an i-address via P2ID instead of throwing', () => {
+      // Previously utxo-lib's addOutput threw an untyped "no matching Script"
+      // for an i-address change destination.
+      const iAddr = deriveIdentityAddress('changeid', SYSTEM_ID);
+      const params = makeUpdateParams('ichange', { changeAddress: iAddr });
+      const result = buildAndSignIdentityUpdate(params, NETWORK, 'update');
+      expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
+    });
+  });
 });
