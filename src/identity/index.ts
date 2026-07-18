@@ -763,11 +763,15 @@ function _buildVrscRegistration(
     }
   }
 
-  // requiredNative = full registration fee (referral outputs come out of this total)
-  // implicit fee to miners = totalFee - sum(referral outputs) + txFee
+  // With a referral, the registrant pays the discounted issuer fee, not the full
+  // registration fee — the referral outputs are paid OUT OF the issuer fee (the
+  // referrers take referralAmount each, the rest is the implicit miner fee).
+  // Verified live on VRSCTEST: a 1-referral registration required 80 VRSC total
+  // (20 to the referrer, 60 to the miner), not 100. Funding totalFee overpaid by
+  // exactly (totalFee - issuerFee) every referred registration.
   const totalFee = params.registrationFee ?? DEFAULT_REGISTRATION_FEE;
   const totalReferralPayments = referralOutputs.reduce((sum, o) => sum + o.value, 0n);
-  const requiredNative = totalFee;
+  const requiredNative = hasReferral ? fees.issuerFee : totalFee;
   const numOutputs = 2 + referralOutputs.length + 1;
   const selection = selectUtxos(
     params.utxos,
@@ -823,7 +827,7 @@ function _buildVrscRegistration(
   // client-side fee-rate cap (default 2500 sat/vbyte) must be told the
   // intended absolute fee or build() throws "Transaction has absurd fees".
   const expectedImplicitFee =
-    commitUtxo.satoshis + totalFee - totalReferralPayments + selection.fee;
+    commitUtxo.satoshis + requiredNative - totalReferralPayments + selection.fee;
 
   // Independent value-conservation check on the assembled transaction: recompute
   // the native fee straight from inputs and outputs and require it to equal the
@@ -854,7 +858,10 @@ function _buildVrscRegistration(
     txid,
     fee: selection.fee,
     identityAddress,
-    registrationFee: totalFee - totalReferralPayments,
+    // The registrant's registration outlay: the discounted issuer fee when
+    // referred, the full fee otherwise. (Of this, referralPayments go to the
+    // referrers and the remainder is the implicit miner fee.)
+    registrationFee: requiredNative,
     referralPayments: referralOutputs.length,
     referralAmountEach: fees.referralAmount,
     inputsUsed: allUtxos.length,
