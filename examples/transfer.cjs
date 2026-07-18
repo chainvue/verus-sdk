@@ -24,6 +24,9 @@ async function main() {
     amount: 90_000_000n, // 0.9 VRSC
     utxos: [{ txid: "ab".repeat(32), outputIndex: 0, satoshis: 100_000_000n, script }],
     changeAddress: address,
+    // Required. In real use pass `currentBlockHeight + DEFAULT_EXPIRY_DELTA`
+    // (the SDK is offline and can't read the tip); 0 means never expires.
+    expiryHeight: 0,
   });
 
   console.log("txid:        ", result.txid);

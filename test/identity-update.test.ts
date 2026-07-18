@@ -18,6 +18,7 @@ import {
   createMockIdentityHex,
 } from './fixtures/index.js';
 import { deriveIdentityAddress } from '../src/identity/index.js';
+import { TransactionBuildError } from '../src/errors.js';
 
 const SYSTEM_ID = VRSCTEST_SYSTEM_ID;
 
@@ -31,6 +32,7 @@ function makeUpdateParams(name: string, overrides?: Record<string, unknown>) {
     identityUtxo: mock.identityUtxo,
     utxos: [makeFundingUtxo('aa', 100_000_000n)],
     changeAddress: TEST_ADDRESS,
+    expiryHeight: 0,
     ...overrides,
   };
 }
@@ -51,6 +53,28 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.operation).toBe('update');
       expect(result.fee).toBeGreaterThan(0n);
       expect(result.inputsUsed).toBeGreaterThanOrEqual(2); // funding + identity
+    });
+
+    // Buffer.from(_, 'hex') silently drops non-hex and truncates odd-length
+    // input, so a malformed contentMap value would be committed on-chain as
+    // wrong/empty bytes. It must be rejected instead.
+    it('rejects a non-hex contentMap value', () => {
+      const key = deriveIdentityAddress('cmkey', SYSTEM_ID);
+      const params = makeUpdateParams('cmapbad', { contentMap: { [key]: '0xdeadbeef' } });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+
+    it('rejects an odd-length hex contentMap value', () => {
+      const key = deriveIdentityAddress('cmkey', SYSTEM_ID);
+      const params = makeUpdateParams('cmapodd', { contentMap: { [key]: 'abc' } });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+
+    it('accepts a valid 32-byte hex contentMap value', () => {
+      const key = deriveIdentityAddress('cmkey', SYSTEM_ID);
+      const params = makeUpdateParams('cmapok', { contentMap: { [key]: 'ab'.repeat(32) } });
+      const result = buildAndSignIdentityUpdate(params, NETWORK, 'update');
+      expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
     });
 
     it('should update revocation and recovery authorities', () => {

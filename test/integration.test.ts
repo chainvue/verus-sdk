@@ -57,6 +57,7 @@ describe('VerusSDK integration', () => {
     it('should build and sign a P2PKH transaction', () => {
       const result = sdk.buildAndSign({
         wif: TEST_WIF_A,
+        expiryHeight: 0,
         inputs: [{
           txid: 'a'.repeat(64),
           vout: 0,
@@ -84,6 +85,7 @@ describe('VerusSDK integration', () => {
         amount: 100_000_000n,
         utxos: [utxo],
         changeAddress: TEST_ADDR_A,
+        expiryHeight: 0,
       });
 
       expect(result.signedTx).toBeTruthy();
@@ -129,6 +131,7 @@ describe('VerusSDK integration', () => {
         name: 'sdktest',
         utxos: [utxo],
         changeAddress: TEST_ADDR_A,
+        expiryHeight: 0,
       });
 
       expect(result.signedTx).toBeTruthy();
@@ -149,6 +152,7 @@ describe('VerusSDK integration', () => {
         name: 'name1',
         utxos: [utxo1],
         changeAddress: TEST_ADDR_A,
+        expiryHeight: 0,
       });
 
       const r2 = sdk.createCommitment({
@@ -156,6 +160,7 @@ describe('VerusSDK integration', () => {
         name: 'name2',
         utxos: [utxo2],
         changeAddress: TEST_ADDR_A,
+        expiryHeight: 0,
       });
 
       expect(r1.identityAddress).not.toBe(r2.identityAddress);

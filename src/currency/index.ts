@@ -19,7 +19,7 @@ import { Identity, IdentityScript } from 'verus-typescript-primitives';
 import BN from 'bn.js';
 import { NETWORK_CONFIG, VERSION_GROUP_ID, IDENTITY_FLAG_ACTIVECURRENCY } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { signTransactionSmart, getNetwork } from '../signing/index.js';
+import { signTransactionSmart, getNetwork, resolveExpiryHeight } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { toSafeNumber } from '../utils/index.js';
 import type { Utxo, DefineCurrencyParams, DefineCurrencyResult } from '../types/index.js';
@@ -67,7 +67,7 @@ export function defineCurrency(
   // Build transaction
   const txb = new TransactionBuilder(verusNetwork);
   txb.setVersion(4);
-  txb.setExpiryHeight(params.expiryHeight || 0);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
 
   for (const utxo of selection.selected) {

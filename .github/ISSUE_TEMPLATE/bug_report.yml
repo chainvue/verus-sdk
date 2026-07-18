@@ -35,6 +35,7 @@ body:
           amount: 90_000_000n,
           utxos: [{ txid: "ab".repeat(32), outputIndex: 0, satoshis: 100_000_000n, script }],
           changeAddress: address,
+          expiryHeight: 0,
         });
         // expected: …
         // got: …
