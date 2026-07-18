@@ -302,5 +302,31 @@ describe('identity', () => {
       expect(identity.name).toBe('testid');
       expect(identity.getIdentityAddress()).toMatch(/^i/);
     });
+
+    it('rejects an R-address parent (would be laundered to an identity hash)', () => {
+      expect(() =>
+        createIdentityObject({
+          name: 'testid',
+          primaryAddresses: [TEST_ADDR],
+          revocationAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
+          recoveryAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
+          parentIAddress: TEST_ADDR, // R-address, not an i-address
+          systemId: SYSTEM_ID,
+        }),
+      ).toThrow(/parentIAddress must be an identity i-address/);
+    });
+
+    it('rejects an R-address systemId', () => {
+      expect(() =>
+        createIdentityObject({
+          name: 'testid',
+          primaryAddresses: [TEST_ADDR],
+          revocationAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
+          recoveryAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
+          parentIAddress: SYSTEM_ID,
+          systemId: TEST_ADDR, // R-address, not an i-address
+        }),
+      ).toThrow(/systemId must be an identity i-address/);
+    });
   });
 });
