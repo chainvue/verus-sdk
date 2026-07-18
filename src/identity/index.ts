@@ -450,6 +450,12 @@ export function createIdentityObject(params: {
   );
   assertAddressVersion(params.revocationAuthority, I_ADDR_VERSION, 'revocationAuthority');
   assertAddressVersion(params.recoveryAuthority, I_ADDR_VERSION, 'recoveryAuthority');
+  // parent and systemId are laundered by IdentityID.fromAddress too; an
+  // R-address here would be stamped into an identity-versioned hash, yielding a
+  // wrong parent/system the daemon rejects. Guard them for symmetry with the
+  // authority fields above.
+  assertAddressVersion(params.parentIAddress, I_ADDR_VERSION, 'parentIAddress');
+  assertAddressVersion(params.systemId, I_ADDR_VERSION, 'systemId');
   validateMinSigs(params.minSigs ?? 1, params.primaryAddresses.length);
   const primaryKeys = params.primaryAddresses.map(addr => KeyID.fromAddress(addr));
 
