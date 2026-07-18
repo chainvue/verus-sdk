@@ -85,7 +85,7 @@ const EVAL_IDENTITY_ADVANCEDRESERVATION = 10;
  * P2PKH nobody controls, permanently bricking the new identity. Validate up
  * front instead.
  */
-function assertAddressVersion(address: string, expectedVersion: number, label: string): void {
+export function assertAddressVersion(address: string, expectedVersion: number, label: string): void {
   let version: number;
   try {
     version = fromBase58Check(address).version;
