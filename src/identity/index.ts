@@ -1089,6 +1089,9 @@ export function buildAndSignIdentityUpdate(
       if (params.contentMultimap) {
         const jsonObj: Record<string, string[]> = {};
         for (const [key, value] of Object.entries(params.contentMultimap)) {
+          // Keys are vdxf i-addresses; ContentMultiMap.fromJson runs
+          // fromBase58Check(key) and throws an untyped error for a bad key.
+          assertAddressVersion(key, I_ADDR_VERSION, `contentMultimap key "${key}"`);
           const items = Array.isArray(value) ? value : [value];
           // Same trap as contentMap: ContentMultiMap.fromJson runs
           // Buffer.from(_, 'hex') on each array entry with no validation, so a

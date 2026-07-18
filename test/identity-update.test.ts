@@ -132,6 +132,11 @@ describe('buildAndSignIdentityUpdate', () => {
       const params = makeUpdateParams('cmmodd', { contentMultimap: { [key]: 'abc' } });
       expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
     });
+
+    it('rejects a non-i-address contentMultimap key with a typed error', () => {
+      const params = makeUpdateParams('cmmbadkey', { contentMultimap: { 'not-an-iaddress': ['ab'.repeat(32)] } });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
   });
 
   // ─── Lock ──────────────────────────────────────────────
