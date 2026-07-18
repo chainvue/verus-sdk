@@ -17,7 +17,7 @@ import {
   makeFundingUtxo,
   createMockIdentityHex,
 } from './fixtures/index.js';
-import { deriveIdentityAddress } from '../src/identity/index.js';
+import { deriveIdentityAddress, buildTokenChangeOutput } from '../src/identity/index.js';
 import { TransactionBuildError } from '../src/errors.js';
 
 const SYSTEM_ID = VRSCTEST_SYSTEM_ID;
@@ -217,6 +217,31 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.operation).toBe('recover');
       expect(result.fee).toBeGreaterThan(0n);
+    });
+  });
+
+  // KeyID/IdentityID.fromAddress launder any address to their own version, so a
+  // wrong-kind address silently becomes a different, uncontrollable destination.
+  describe('address-type validation (laundering regression)', () => {
+    const anIdentity = deriveIdentityAddress('sdk-hardening-test', SYSTEM_ID);
+
+    it('rejects an i-address passed as a primaryAddress (would brick the identity)', () => {
+      const params = makeUpdateParams('primbad', { primaryAddresses: [anIdentity] });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+
+    it('rejects an R-address passed as revocationAuthority', () => {
+      const params = makeUpdateParams('authbad', { revocationAuthority: TEST_ADDRESS_B });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'recover')).toThrow(TransactionBuildError);
+    });
+
+    it('buildTokenChangeOutput builds for an i-address change (pay-to-identity) and an R-address, rejects garbage', () => {
+      const token = deriveIdentityAddress('sometoken', SYSTEM_ID);
+      // Both valid kinds succeed; the i-address path routes to the identity
+      // (verified against the daemon) rather than a laundered R-address.
+      expect(() => buildTokenChangeOutput(anIdentity, new Map([[token, 100n]]))).not.toThrow();
+      expect(() => buildTokenChangeOutput(TEST_ADDRESS_B, new Map([[token, 100n]]))).not.toThrow();
+      expect(() => buildTokenChangeOutput('not-a-real-address', new Map([[token, 100n]]))).toThrow();
     });
   });
 });

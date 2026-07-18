@@ -40,6 +40,8 @@ import {
   DEFAULT_REFERRAL_LEVELS,
   RESERVE_TRANSFER_FEE,
   RESERVE_TRANSFER_EVAL_PKH,
+  PUBKEY_HASH_PREFIX,
+  I_ADDR_VERSION,
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
@@ -72,6 +74,48 @@ const NULL_ID_HASH = Buffer.alloc(HASH160_BYTE_LENGTH, 0);
 const EVAL_IDENTITY_ADVANCEDRESERVATION = 10;
 
 // ─── Script / Hash Builders ────────────────────────────────────────
+
+/**
+ * Assert a base58check address has the expected version byte.
+ *
+ * KeyID.fromAddress / IdentityID.fromAddress discard the version byte and stamp
+ * their own, so an i-address passed where an R-address is expected (or vice
+ * versa) is silently laundered into a different, uncontrollable destination —
+ * e.g. an i-address as a primary key becomes the hash of the identity paid as a
+ * P2PKH nobody controls, permanently bricking the new identity. Validate up
+ * front instead.
+ */
+function assertAddressVersion(address: string, expectedVersion: number, label: string): void {
+  let version: number;
+  try {
+    version = fromBase58Check(address).version;
+  } catch {
+    throw new TransactionBuildError(`${label} is not a valid base58check address: ${JSON.stringify(address)}`);
+  }
+  if (version !== expectedVersion) {
+    const want = expectedVersion === I_ADDR_VERSION ? 'an identity i-address' : 'an R-address';
+    throw new TransactionBuildError(
+      `${label} must be ${want} (version ${expectedVersion}), got version ${version}: ${address}`,
+    );
+  }
+}
+
+/** Validate the address-typed params shared by identity update/recover. */
+function validateUpdateAddressParams(params: {
+  primaryAddresses?: string[];
+  revocationAuthority?: string;
+  recoveryAuthority?: string;
+}): void {
+  params.primaryAddresses?.forEach((a, i) =>
+    assertAddressVersion(a, PUBKEY_HASH_PREFIX, `primaryAddresses[${i}]`),
+  );
+  if (params.revocationAuthority) {
+    assertAddressVersion(params.revocationAuthority, I_ADDR_VERSION, 'revocationAuthority');
+  }
+  if (params.recoveryAuthority) {
+    assertAddressVersion(params.recoveryAuthority, I_ADDR_VERSION, 'recoveryAuthority');
+  }
+}
 
 /**
  * Generate a random 32-byte salt for name commitment
@@ -376,6 +420,11 @@ export function createIdentityObject(params: {
   parentIAddress: string;
   systemId: string;
 }): Identity {
+  params.primaryAddresses.forEach((addr, i) =>
+    assertAddressVersion(addr, PUBKEY_HASH_PREFIX, `primaryAddresses[${i}]`),
+  );
+  assertAddressVersion(params.revocationAuthority, I_ADDR_VERSION, 'revocationAuthority');
+  assertAddressVersion(params.recoveryAuthority, I_ADDR_VERSION, 'recoveryAuthority');
   const primaryKeys = params.primaryAddresses.map(addr => KeyID.fromAddress(addr));
 
   const identity = new Identity({
@@ -458,7 +507,22 @@ export function buildTokenChangeOutput(
   changeAddress: string,
   currencyChanges: Map<string, bigint>,
 ): { script: Buffer; nativeValue: bigint } {
-  const destination = new TxDestination(KeyID.fromAddress(changeAddress));
+  // KeyID.fromAddress launders any address to the R-address form, so token
+  // change to an i-address changeAddress was paid to a transparent script
+  // nobody controls (burned on paths with no funded-transfer validator). Build
+  // a pay-to-identity destination for i-addresses, and reject anything that is
+  // neither an R- nor an i-address rather than silently mis-routing it.
+  const version = fromBase58Check(changeAddress).version;
+  let destination: InstanceType<typeof TxDestination>;
+  if (version === I_ADDR_VERSION) {
+    destination = new TxDestination(IdentityID.fromAddress(changeAddress));
+  } else if (version === PUBKEY_HASH_PREFIX) {
+    destination = new TxDestination(KeyID.fromAddress(changeAddress));
+  } else {
+    throw new TransactionBuildError(
+      `token change address must be an R-address or identity i-address, got version ${version}: ${changeAddress}`,
+    );
+  }
 
   const valueMap = new Map<string, typeof BN.prototype>();
   for (const [currency, amount] of currencyChanges) {
@@ -908,6 +972,7 @@ export function buildAndSignIdentityUpdate(
 
   switch (operation) {
     case 'update': {
+      validateUpdateAddressParams(params);
       if (params.primaryAddresses) {
         identity.setPrimaryAddresses(params.primaryAddresses);
       }
@@ -960,6 +1025,7 @@ export function buildAndSignIdentityUpdate(
       break;
     }
     case 'recover': {
+      validateUpdateAddressParams(params);
       identity.unrevoke();
       identity.clearContentMultiMap();
       if (params.primaryAddresses) {
