@@ -1086,7 +1086,18 @@ export function buildAndSignIdentityUpdate(
       break;
     }
     case 'unlock': {
-      identity.unlock(new BN(0), new BN(resolveExpiryHeight(params.expiryHeight)));
+      // Identity.unlock anchors the remaining lock delay to the tx expiry height
+      // (unlock_after += txExpiryHeight). expiryHeight 0 ("never expires") leaves
+      // the delay unanchored — a relative delay collapses to a past height and
+      // the timelock is effectively bypassed. Require a real height for unlock.
+      const unlockExpiry = resolveExpiryHeight(params.expiryHeight);
+      if (unlockExpiry === 0) {
+        throw new TransactionBuildError(
+          'unlock requires a non-zero expiryHeight (currentBlockHeight + DEFAULT_EXPIRY_DELTA): ' +
+            'the unlock delay is anchored to it, so 0 would bypass the timelock.',
+        );
+      }
+      identity.unlock(new BN(0), new BN(unlockExpiry));
       break;
     }
   }
