@@ -194,4 +194,38 @@ describe('transfer', () => {
       expect(never.txid).toMatch(/^[0-9a-f]{64}$/);
     });
   });
+
+  // A non-native fee currency must be funded from its own inputs; it was omitted
+  // from selection, under-funding a reserve transfer that pays its fee in a token.
+  describe('non-native feeCurrency funding', () => {
+    // Real VRSCTEST reserve-output script carrying token i4At2tf5… (5.0).
+    const TOKEN_A = 'i4At2tf5ChLPV9pQgt7RiRQSSEdiRouRva';
+    const TOKEN_B = 'i5mPWvir9xnkwd1UVHuWdEViQzTmj8gfzG';
+    const TOKEN_A_SCRIPT =
+      '1b0403000101150407a1d5aeb8f5202aba353a0c24a1aac2b04c3146cc360403090101150407a1d5aeb8f5202aba353a0c24a1aac2b04c31461a0107a1d5aeb8f5202aba353a0c24a1aac2b04c314680edb4c90075';
+
+    it('requires the fee currency, so a token-denominated fee with no such inputs fails', () => {
+      const tokenAUtxo = {
+        txid: 'bd0cfac4603ca7e9f0a317de8046fedff419a5cf4e6e635e9e466a611d1fb401',
+        outputIndex: 2,
+        satoshis: 100_000_000n, // covers native + the TOKEN_A send
+        script: TOKEN_A_SCRIPT,
+      };
+      // Sends TOKEN_A (funded) but pays the fee in TOKEN_B (not in the utxo set).
+      // Before the fix the fee currency was ignored → under-funded tx; now the
+      // selection demands it and fails closed on TOKEN_B.
+      expect(() =>
+        sendCurrency(
+          {
+            wif: TEST_WIF,
+            outputs: [{ currency: TOKEN_A, satoshis: 100_000_000n, address: TEST_ADDR, addressType: 'PKH', feeCurrency: TOKEN_B, feeSatoshis: 5_000n }],
+            utxos: [tokenAUtxo],
+            changeAddress: TEST_ADDR,
+            expiryHeight: 0,
+          },
+          'testnet',
+        ),
+      ).toThrow(new RegExp(TOKEN_B));
+    });
+  });
 });
