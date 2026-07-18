@@ -88,10 +88,15 @@ export function estimateFee(
   numInputs: number,
   numOutputs: number,
   feePerKb: bigint = DEFAULT_FEE_PER_KB,
-  hasSmartOutputs: boolean = false
+  hasSmartOutputs: boolean = false,
+  extraBytes: number = 0
 ): bigint {
   const outputSize = hasSmartOutputs ? SMART_OUTPUT_SIZE : P2PKH_OUTPUT_SIZE;
-  const txSize = TX_OVERHEAD + numInputs * INPUT_SIZE + numOutputs * outputSize;
+  // `extraBytes` accounts for pre-built outputs whose real size dwarfs the
+  // fixed per-output estimate (e.g. an identity output embedding a multi-KB
+  // contentMultimap). Without it a large tx is fee-estimated far below the
+  // relay minimum and the daemon rejects it.
+  const txSize = TX_OVERHEAD + numInputs * INPUT_SIZE + numOutputs * outputSize + extraBytes;
   const fee = (BigInt(txSize) * feePerKb + 999n) / 1000n; // ceil(txSize * feePerKb / 1000)
   return fee > MIN_FEE ? fee : MIN_FEE;
 }
@@ -106,7 +111,8 @@ export function selectUtxos(
   numOutputs: number = 2,
   systemId: string = NETWORK_CONFIG.mainnet.chainId,
   feePerKb: bigint = DEFAULT_FEE_PER_KB,
-  hasSmartOutputs: boolean = false
+  hasSmartOutputs: boolean = false,
+  extraOutputBytes: number = 0
 ): SelectionResult {
   // Reject duplicate outpoints up front. An outpoint can only be spent once, so
   // the same (txid, outputIndex) twice is always a caller error. Left unchecked
@@ -203,7 +209,8 @@ export function selectUtxos(
     selected.length + 1,
     numOutputs + 1 + changeOutputCount,
     feePerKb,
-    hasSmartOutputs
+    hasSmartOutputs,
+    extraOutputBytes
   );
 
   while (remainingNative + fee > 0n) {
@@ -230,7 +237,8 @@ export function selectUtxos(
       selected.length,
       numOutputs + 1 + changeOutputCount,
       feePerKb,
-      hasSmartOutputs
+      hasSmartOutputs,
+      extraOutputBytes
     );
   }
 
