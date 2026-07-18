@@ -20,12 +20,7 @@ import {
   SmartTransactionScript,
   Identity,
   IdentityScript,
-  ReserveTransfer,
-  TransferDestination,
   ContentMultiMap,
-  RESERVE_TRANSFER_VALID,
-  RESERVE_TRANSFER_BURN_CHANGE_PRICE,
-  DEST_ID,
 } from 'verus-typescript-primitives';
 import { EVALS } from 'verus-typescript-primitives';
 import {
@@ -38,8 +33,6 @@ import {
   VERSION_GROUP_ID,
   DEFAULT_REGISTRATION_FEE,
   DEFAULT_REFERRAL_LEVELS,
-  RESERVE_TRANSFER_FEE,
-  RESERVE_TRANSFER_EVAL_PKH,
   PUBKEY_HASH_PREFIX,
   I_ADDR_VERSION,
 } from '../constants/index.js';
@@ -479,7 +472,23 @@ export function createIdentityObject(params: {
 }
 
 /**
- * Build a CReserveTransfer fee output for sub-ID registration
+ * Build the parent-currency registration-fee output for a sub-ID.
+ *
+ * The daemon pays this fee as a plain reserve output (EVAL_RESERVE_OUTPUT)
+ * holding `feeAmount` of the parent currency AT the parent currency's own
+ * i-address, carrying zero native value. Verified against `registeridentity`
+ * on VRSCTEST and an accepted on-chain sub-ID registration: for a currency
+ * with idregistrationfees=1.0 the fee output is exactly `{parent: 1.0}` at the
+ * parent, 0 native, and the native cost that leaves the transaction is the
+ * currency's idimportfees (the caller passes it as `nativeImportFee`).
+ *
+ * A previous implementation built this as a CReserveTransfer to the
+ * reserve-transfer eval address carrying 0.0002 native — a cross-currency
+ * transfer, not a same-chain fee payment. That structure never matched the
+ * daemon and was never accepted at broadcast.
+ *
+ * `systemId`/`_controlAddress` are retained for signature compatibility and
+ * are unused: the fee is denominated in and paid to the parent currency.
  */
 export function buildRegistrationFeeOutput(
   parentCurrencyId: string,
@@ -487,51 +496,8 @@ export function buildRegistrationFeeOutput(
   systemId: string,
   _controlAddress: string,
 ): { script: Buffer; nativeValue: bigint } {
-  const destination = new TxDestination(KeyID.fromAddress(RESERVE_TRANSFER_EVAL_PKH));
-
-  const values = new CurrencyValueMap({
-    value_map: new Map([[parentCurrencyId, new BN(feeAmount.toString(10))]]),
-    multivalue: false,
-  });
-
-  const parentHash = fromBase58Check(parentCurrencyId).hash;
-  const transferDest = new TransferDestination({
-    type: DEST_ID,
-    destination_bytes: Buffer.from(parentHash),
-  });
-
-  const flags = RESERVE_TRANSFER_VALID.or(RESERVE_TRANSFER_BURN_CHANGE_PRICE);
-
-  const resTransfer = new ReserveTransfer({
-    values,
-    version: new BN(1),
-    flags,
-    fee_currency_id: systemId,
-    fee_amount: new BN(RESERVE_TRANSFER_FEE.toString(10)),
-    transfer_destination: transferDest,
-    dest_currency_id: parentCurrencyId,
-  });
-
-  const master = new OptCCParams({
-    version: new BN(3),
-    eval_code: new BN(EVALS.EVAL_NONE),
-    m: new BN(1),
-    n: new BN(1),
-    destinations: [destination],
-    vdata: [],
-  });
-
-  const params = new OptCCParams({
-    version: new BN(3),
-    eval_code: new BN(EVALS.EVAL_RESERVE_TRANSFER),
-    m: new BN(1),
-    n: new BN(1),
-    destinations: [destination],
-    vdata: [resTransfer.toBuffer()],
-  });
-
-  const script = new SmartTransactionScript(master, params);
-  return { script: script.toBuffer(), nativeValue: RESERVE_TRANSFER_FEE };
+  void systemId;
+  return buildTokenChangeOutput(parentCurrencyId, new Map([[parentCurrencyId, feeAmount]]));
 }
 
 /**
