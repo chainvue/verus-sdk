@@ -234,6 +234,15 @@ describe('identity', () => {
       expect(result.commitmentScript.length).toBeGreaterThan(0);
       expect(result.identityAddress).toMatch(/^i/);
     });
+
+    it('rejects an R-address referral (would be laundered into a bogus identity)', () => {
+      // A referral must be an i-address; iAddressToHash discards the version byte,
+      // so an R-address silently becomes a hash naming no identity and the daemon
+      // rejects the registration after the commitment fee is already spent.
+      expect(() =>
+        prepareNameCommitment('mytest', TEST_ADDR, TEST_ADDR, undefined, 'testnet'),
+      ).toThrow(/referral/);
+    });
   });
 
   describe('buildAndSignCommitment control address', () => {

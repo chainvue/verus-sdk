@@ -9,6 +9,7 @@ import { defineCurrency } from '../src/currency/index.js';
 import { InvalidWifError, TransactionBuildError } from '../src/errors.js';
 import {
   TEST_WIF,
+  TEST_WIF_B,
   TEST_ADDRESS,
   NETWORK,
   makeFundingUtxo,
@@ -120,6 +121,14 @@ describe('currency', () => {
 
     it('rejects an empty utxo set up front', () => {
       expect(() => defineCurrency({ ...base, wif: TEST_WIF, utxos: [] }, NETWORK)).toThrow(TransactionBuildError);
+    });
+
+    it('rejects a WIF that does not control the identity', () => {
+      // mock identity's primary is TEST_ADDRESS; TEST_WIF_B controls TEST_ADDRESS_B.
+      // Without this guard the fork signs anyway and the daemon rejects at broadcast.
+      expect(() => defineCurrency({ ...base, wif: TEST_WIF_B }, NETWORK)).toThrow(
+        /not among the identity's primary addresses/,
+      );
     });
   });
 });
