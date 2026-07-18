@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.7.0](https://github.com/chainvue/verus-sdk/compare/v0.6.3...v0.7.0) (2026-07-18)
+
+
+* feat(message)!: accept daemon-format signatures, require explicit blockHeight, validate identity address ([82bfb94](https://github.com/chainvue/verus-sdk/commit/82bfb94643a2b157f3ff7d4ec0f5344a4bc7e3a9)), closes [#3](https://github.com/chainvue/verus-sdk/issues/3) [#8](https://github.com/chainvue/verus-sdk/issues/8)
+
+
+### Bug Fixes
+
+* assert native value conservation on sub-ID registration ([64f12ad](https://github.com/chainvue/verus-sdk/commit/64f12ada8b071db937964bedc3826fedca33f339))
+* **identity:** build sub-ID registration fee as a reserve output, not a reserve transfer ([c655b9f](https://github.com/chainvue/verus-sdk/commit/c655b9f892778e27f4fa457e8d81da7726bb8e6d)), closes [#1](https://github.com/chainvue/verus-sdk/issues/1)
+* **identity:** validate signer controls identity and referrals are i-addresses ([a55137c](https://github.com/chainvue/verus-sdk/commit/a55137c1f8efa4ea96cd28bf69b1bc0393acaa38)), closes [#4](https://github.com/chainvue/verus-sdk/issues/4) [#5](https://github.com/chainvue/verus-sdk/issues/5)
+* **keys:** reject malformed WIF compression flag and non-20-byte address payloads ([298b455](https://github.com/chainvue/verus-sdk/commit/298b455408d452d4aa3d407b18c79b1084bc5240)), closes [#6](https://github.com/chainvue/verus-sdk/issues/6) [#7](https://github.com/chainvue/verus-sdk/issues/7)
+
+
+### BREAKING CHANGES
+
+* signMessage now throws if blockHeight is omitted; pass the
+current chain height (or an explicit 0 for a signature never verified on-chain).
+
+
 ## [0.6.3](https://github.com/chainvue/verus-sdk/compare/v0.6.2...v0.6.3) (2026-07-18)
 
 
