@@ -27,7 +27,7 @@ import {
   nameAndParentAddrToIAddr,
   fromBase58Check,
 } from 'verus-typescript-primitives';
-import { script as bscript, opcodes, TransactionBuilder, Transaction, smarttxs, ECPair } from '@bitgo/utxo-lib';
+import { TransactionBuilder, Transaction, smarttxs, ECPair } from '@bitgo/utxo-lib';
 import {
   NETWORK_CONFIG,
   VERSION_GROUP_ID,
@@ -357,18 +357,17 @@ export function prepareNameCommitment(
 }
 
 /**
- * Build a P2ID output script (pay to identity)
+ * Build a pay-to-identity output script for an i-address.
+ *
+ * Alias of {@link identityPaymentScript}. This previously emitted the bare
+ * 26-byte template `OP_DUP OP_HASH160 <idhash> OP_EQUALVERIFY OP_CHECKSIG
+ * OP_CHECKCRYPTOCONDITION`, which is NOT a valid Verus scriptPubKey — a Verus
+ * P2ID is a CryptoCondition (OptCCParams) output. Funds sent to the old
+ * template would have gone to a non-standard script the daemon does not treat
+ * as identity-spendable. It now delegates to the chain-verified CC builder.
  */
 export function buildP2IDScript(iAddress: string): Buffer {
-  const idHash = iAddressToHash(iAddress);
-  return bscript.compile([
-    opcodes.OP_DUP,
-    opcodes.OP_HASH160,
-    idHash,
-    opcodes.OP_EQUALVERIFY,
-    opcodes.OP_CHECKSIG,
-    opcodes.OP_CHECKCRYPTOCONDITION,
-  ]);
+  return identityPaymentScript(iAddress);
 }
 
 /**
