@@ -195,6 +195,15 @@ export function sendCurrency(
         (requiredCurrencies.get(out.currency) || 0n) + out.satoshis,
       );
     }
+    // A non-native fee currency must be funded from that currency's own inputs.
+    // It was omitted from selection, so a reserve transfer paying its fee in a
+    // token was under-funded and rejected by the daemon.
+    if (out.feeCurrency !== undefined && out.feeCurrency !== systemId && out.feeSatoshis !== undefined) {
+      requiredCurrencies.set(
+        out.feeCurrency,
+        (requiredCurrencies.get(out.feeCurrency) || 0n) + out.feeSatoshis,
+      );
+    }
   }
 
   const selection = selectUtxos(
