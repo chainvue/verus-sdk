@@ -1,10 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { selectUtxos, estimateFee } from '../src/utxo/index.js';
+import { selectUtxos, estimateFee, assertTokenConservation } from '../src/utxo/index.js';
+import { buildTokenChangeOutput, deriveIdentityAddress } from '../src/identity/index.js';
 import { NETWORK_CONFIG } from '../src/constants/index.js';
 import { TransactionBuildError } from '../src/errors.js';
 import type { Utxo } from '../src/types/index.js';
 
 const SYSTEM_ID = NETWORK_CONFIG.testnet.chainId;
+const TOKEN_CURRENCY = deriveIdentityAddress('toktest', SYSTEM_ID);
+const R_ADDR = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';
+
+/** A reserve-output UTXO carrying `amount` of TOKEN_CURRENCY, zero native. */
+function tokenUtxo(amount: bigint, index: number): Utxo {
+  const { script } = buildTokenChangeOutput(R_ADDR, new Map([[TOKEN_CURRENCY, amount]]));
+  return {
+    txid: Buffer.alloc(32, index).toString('hex'),
+    outputIndex: 0,
+    satoshis: 0n,
+    script: script.toString('hex'),
+  };
+}
 
 function makeUtxo(satoshis: bigint, index: number = 0): Utxo {
   // Simple P2PKH scriptPubKey (OP_DUP OP_HASH160 <20 bytes> OP_EQUALVERIFY OP_CHECKSIG)
@@ -148,6 +162,45 @@ describe('utxo', () => {
       // Should have selected the largest UTXO (50M)
       expect(result.selected.length).toBe(1);
       expect(result.selected[0]?.satoshis).toBe(50_000_000n);
+    });
+  });
+
+  describe('assertTokenConservation', () => {
+    it('passes for native-only inputs with no token outputs', () => {
+      expect(() =>
+        assertTokenConservation([makeUtxo(1_000_000n, 1)], new Map(), new Map(), SYSTEM_ID, 'native path'),
+      ).not.toThrow();
+    });
+
+    it('throws when a token-bearing input has no matching output (would be dropped)', () => {
+      // native-only path guard: both maps empty ⇒ any token in inputs is a drop.
+      expect(() =>
+        assertTokenConservation([tokenUtxo(100_000_000n, 1)], new Map(), new Map(), SYSTEM_ID, 'currency definition'),
+      ).toThrow(/token conservation failed/);
+    });
+
+    it('passes when input tokens equal fee-out + change', () => {
+      expect(() =>
+        assertTokenConservation(
+          [tokenUtxo(150_000_000n, 1)],
+          new Map([[TOKEN_CURRENCY, 100_000_000n]]), // paid to the fee output
+          new Map([[TOKEN_CURRENCY, 50_000_000n]]), // returned as change
+          SYSTEM_ID,
+          'sub-ID registration',
+        ),
+      ).not.toThrow();
+    });
+
+    it('throws when fee-out + change do not account for all input tokens', () => {
+      expect(() =>
+        assertTokenConservation(
+          [tokenUtxo(150_000_000n, 1)],
+          new Map([[TOKEN_CURRENCY, 100_000_000n]]),
+          new Map([[TOKEN_CURRENCY, 40_000_000n]]), // 10M unaccounted → drop
+          SYSTEM_ID,
+          'sub-ID registration',
+        ),
+      ).toThrow(/token conservation failed/);
     });
   });
 });

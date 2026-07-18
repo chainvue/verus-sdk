@@ -82,6 +82,51 @@ export function decodeUtxo(utxo: Utxo, systemId: string): DecodedUtxo {
 }
 
 /**
+ * Assert per-currency token conservation for a selection: for every non-native
+ * currency, the token value carried by the selected inputs must exactly equal
+ * what is paid out to non-change outputs (`spentToOutputs`) plus what is
+ * returned as change (`currencyChanges`).
+ *
+ * This is the token-side companion to `assertNativeConservation`. The
+ * identity/currency/sub-ID paths otherwise rely on `selectUtxos` computing
+ * `currencyChanges` correctly by construction; this guard fails closed if that
+ * accounting ever drifts, so parent-currency value can't be silently dropped
+ * or conjured. Inputs are re-decoded here (they decoded cleanly during
+ * selection, so this never throws on a structural output).
+ */
+export function assertTokenConservation(
+  selected: ReadonlyArray<Utxo>,
+  spentToOutputs: Map<string, bigint>,
+  currencyChanges: Map<string, bigint>,
+  systemId: string,
+  label: string
+): void {
+  const inSums = new Map<string, bigint>();
+  for (const u of selected) {
+    const decoded = decodeUtxo(u, systemId);
+    for (const [currency, amount] of decoded.currencyValues) {
+      if (currency === systemId) continue;
+      inSums.set(currency, (inSums.get(currency) || 0n) + amount);
+    }
+  }
+
+  const currencies = new Set<string>();
+  for (const c of inSums.keys()) currencies.add(c);
+  for (const c of spentToOutputs.keys()) if (c !== systemId) currencies.add(c);
+  for (const c of currencyChanges.keys()) if (c !== systemId) currencies.add(c);
+
+  for (const currency of currencies) {
+    const totalIn = inSums.get(currency) || 0n;
+    const totalOut = (spentToOutputs.get(currency) || 0n) + (currencyChanges.get(currency) || 0n);
+    if (totalIn !== totalOut) {
+      throw new TransactionBuildError(
+        `${label} token conservation failed for ${currency}: selected inputs ${totalIn} != fee+change ${totalOut}`,
+      );
+    }
+  }
+}
+
+/**
  * Estimate transaction fee based on input/output counts
  */
 export function estimateFee(
