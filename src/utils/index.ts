@@ -130,6 +130,17 @@ export function addressToScriptPubKey(address: string): Buffer {
   const prefix = decoded[0];
   const hash = decoded.slice(1);
 
+  // Both branches emit a PUSH20 opcode, which asserts a 20-byte payload. A
+  // base58check string that decodes to a different length (wrong version+len
+  // combination) would otherwise produce a malformed script with a length
+  // prefix that doesn't match its data.
+  if (hash.length !== 20) {
+    throw new InvalidAddressError(
+      address,
+      `Expected a 20-byte hash payload, got ${hash.length} bytes`,
+    );
+  }
+
   if (prefix === 0x3c) {
     // P2PKH (R-address)
     return Buffer.concat([
