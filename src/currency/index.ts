@@ -22,6 +22,7 @@ import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { toSafeNumber } from '../utils/index.js';
+import { TransactionBuildError } from '../errors.js';
 import type { Utxo, DefineCurrencyParams, DefineCurrencyResult } from '../types/index.js';
 
 const { completeFundedIdentityUpdate } = smarttxs;
@@ -53,7 +54,9 @@ export function defineCurrency(
   const identityOutputScript = identityScript.toBuffer();
   const currencyDefScript = Buffer.from(params.currencyDefScript, 'hex');
 
-  // Select funding UTXOs
+  // Select funding UTXOs. The identity + currency-definition outputs can be
+  // large; size the fee from their real byte length so the tx isn't estimated
+  // below the relay minimum.
   const selection = selectUtxos(
     params.utxos,
     currencyDefValue,
@@ -62,6 +65,7 @@ export function defineCurrency(
     systemId,
     undefined,
     true,
+    identityOutputScript.length + currencyDefScript.length,
   );
 
   // Build transaction
@@ -92,6 +96,14 @@ export function defineCurrency(
   // Add the previous identity UTXO as last input
   const prevOutScripts = selection.selected.map(u => Buffer.from(u.script, 'hex'));
   const idUtxo = params.identityUtxo;
+  // Any native value on the identity input would be burned to miner fee (the
+  // recreated identity output is value 0). Identity outputs normally carry 0.
+  if (idUtxo.satoshis !== 0n) {
+    throw new TransactionBuildError(
+      `identityUtxo carries ${idUtxo.satoshis} native satoshis, which would be burned to miner fee ` +
+        `(the recreated identity output is value 0). Spend that value separately first.`,
+    );
+  }
   const completedHex = completeFundedIdentityUpdate(
     fundedHex,
     verusNetwork,

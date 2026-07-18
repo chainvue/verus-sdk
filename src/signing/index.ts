@@ -47,6 +47,14 @@ export function resolveExpiryHeight(expiryHeight: number | undefined): number {
       `Invalid expiryHeight: must be a non-negative integer (got ${expiryHeight})`,
     );
   }
+  // Sapling consensus caps nExpiryHeight below TX_EXPIRY_HEIGHT_THRESHOLD
+  // (500,000,000). A value at/above it — e.g. a UNIX timestamp passed by
+  // mistake — produces a transaction the daemon will never mine.
+  if (expiryHeight >= 500_000_000) {
+    throw new TransactionBuildError(
+      `Invalid expiryHeight: must be below 500000000 (got ${expiryHeight}); this looks like a timestamp, not a block height`,
+    );
+  }
   return expiryHeight;
 }
 
