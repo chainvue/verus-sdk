@@ -610,9 +610,16 @@ export function buildAndSignCommitment(
   const verusNetwork = getNetwork(network === 'testnet');
   const networkConfig = NETWORK_CONFIG[network];
 
+  // The commitment output is controlled by, and must be spent by, the key that
+  // completes the registration in step 2 — which signs with this same WIF. Using
+  // changeAddress as the control address broke that when changeAddress differed
+  // from the WIF's address (unsignable commitment), or was an i-address
+  // (KeyID.fromAddress laundered it to an uncontrollable key — permanently
+  // unspendable, wasting the commitment fee). Derive it from the WIF instead.
+  const controlAddress = (ECPair.fromWIF(params.wif, verusNetwork) as { getAddress(): string }).getAddress();
   const commitment = prepareNameCommitment(
     params.name,
-    params.changeAddress,
+    controlAddress,
     params.referral,
     params.parent,
     network,
@@ -646,7 +653,14 @@ export function buildAndSignCommitment(
   txb.addOutput(commitment.commitmentScript, 0);
 
   if (selection.nativeChange > 0n) {
-    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+    // it throws an untyped "no matching Script".
+    if (params.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+    } else {
+      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    }
   }
 
   const unsignedTx = txb.buildIncomplete();
@@ -814,7 +828,14 @@ function _buildVrscRegistration(
   txb.addOutput(reservationScript, 0);
 
   if (selection.nativeChange > 0n) {
-    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+    // it throws an untyped "no matching Script".
+    if (params.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+    } else {
+      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    }
   }
 
   const unsignedTx = txb.buildIncomplete();
@@ -947,7 +968,14 @@ function _buildSubIdRegistration(
       );
       txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
     } else {
+      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+    // it throws an untyped "no matching Script".
+    if (params.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+    } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    }
     }
   }
 
@@ -1003,7 +1031,21 @@ export function buildAndSignIdentityUpdate(
   // Verify the signer is a current primary before spending the identity input.
   // (revoke/recover use the revocation/recovery authority — a separate identity
   // whose keys we can't check here — so they are excluded.)
-  if (operation === 'update' || operation === 'lock' || operation === 'unlock') {
+  // update/lock/unlock are authorized by the identity's own primary key(s).
+  // revoke/recover are authorized by the revocation/recovery AUTHORITY — a
+  // separate identity whose keys aren't in identityHex, so uncheckable in
+  // general — EXCEPT the very common self-authority case (authority == this
+  // identity), which reduces to the same primary check. Guard what we can.
+  let requiresPrimary = operation === 'update' || operation === 'lock' || operation === 'unlock';
+  if (!requiresPrimary && (operation === 'revoke' || operation === 'recover')) {
+    const self = identity.getIdentityAddress();
+    const authority =
+      operation === 'revoke'
+        ? identity.revocation_authority?.toAddress()
+        : identity.recovery_authority?.toAddress();
+    requiresPrimary = authority === self;
+  }
+  if (requiresPrimary) {
     const signerAddress = (ECPair.fromWIF(params.wif, verusNetwork) as { getAddress(): string }).getAddress();
     const currentPrimaries = (identity.primary_addresses ?? []).map((k) => k.toAddress());
     if (!currentPrimaries.includes(signerAddress)) {
@@ -1047,6 +1089,9 @@ export function buildAndSignIdentityUpdate(
       if (params.contentMultimap) {
         const jsonObj: Record<string, string[]> = {};
         for (const [key, value] of Object.entries(params.contentMultimap)) {
+          // Keys are vdxf i-addresses; ContentMultiMap.fromJson runs
+          // fromBase58Check(key) and throws an untyped error for a bad key.
+          assertAddressVersion(key, I_ADDR_VERSION, `contentMultimap key "${key}"`);
           const items = Array.isArray(value) ? value : [value];
           // Same trap as contentMap: ContentMultiMap.fromJson runs
           // Buffer.from(_, 'hex') on each array entry with no validation, so a
@@ -1150,7 +1195,14 @@ export function buildAndSignIdentityUpdate(
   }
 
   if (selection.nativeChange > 0n) {
-    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+    // it throws an untyped "no matching Script".
+    if (params.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+    } else {
+      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    }
   }
 
   const fundedTx = txb.buildIncomplete();
