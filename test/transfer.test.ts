@@ -228,4 +228,28 @@ describe('transfer', () => {
       ).toThrow(new RegExp(TOKEN_B));
     });
   });
+
+  describe('ETH destination validation', () => {
+    const nativeUtxo = {
+      txid: 'a'.repeat(64),
+      outputIndex: 0,
+      satoshis: 100_000_000n,
+      script: makeP2PKHScript(TEST_ADDR),
+    };
+    const ethOutput = (address: string) => ({
+      wif: TEST_WIF,
+      outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 90_000n, address, addressType: 'ETH' as const }],
+      utxos: [nativeUtxo],
+      changeAddress: TEST_ADDR,
+      expiryHeight: 0,
+    });
+
+    it('rejects a non-hex ETH destination (no silent truncation)', () => {
+      expect(() => sendCurrency(ethOutput('0x' + 'Z'.repeat(40)), 'testnet')).toThrow(InvalidAddressError);
+    });
+
+    it('rejects a wrong-length ETH destination', () => {
+      expect(() => sendCurrency(ethOutput('0xdeadbeef'), 'testnet')).toThrow(InvalidAddressError);
+    });
+  });
 });
