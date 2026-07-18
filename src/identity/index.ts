@@ -39,7 +39,7 @@ import {
 import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
-import { selectUtxos } from '../utxo/index.js';
+import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
 import type {
@@ -932,6 +932,16 @@ function _buildSubIdRegistration(
     true,
   );
 
+  // The parent-currency fee (requiredCurrencies) is paid to the fee output and
+  // any excess returns as token change; guard that no token value is dropped.
+  assertTokenConservation(
+    selection.selected,
+    requiredCurrencies,
+    selection.currencyChanges,
+    systemId,
+    'sub-ID registration',
+  );
+
   const txb = new TransactionBuilder(network);
   txb.setVersion(4);
   txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
@@ -1184,6 +1194,17 @@ export function buildAndSignIdentityUpdate(
     // contentMultimap can make it multi-KB); size the fee from its real bytes
     // so a big update isn't fee-estimated below the relay minimum.
     unfundedHex.length / 2,
+  );
+
+  // Update spends only native fees and emits no token-change output, so a
+  // token-bearing funding UTXO would be silently dropped. Fail closed if one
+  // was selected (both maps empty ⇒ assert no token enters).
+  assertTokenConservation(
+    selection.selected,
+    new Map(),
+    new Map(),
+    systemId,
+    'identity update',
   );
 
   const txb = new TransactionBuilder(verusNetwork);
