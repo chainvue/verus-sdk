@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.1](https://github.com/chainvue/verus-sdk/compare/v0.6.0...v0.6.1) (2026-07-18)
+
+
+### Bug Fixes
+
+* fund a non-native feeCurrency in sendCurrency selection ([8c55df0](https://github.com/chainvue/verus-sdk/commit/8c55df003f8c4f729f23fa0a32918bba9f9e31be))
+* fund the discounted issuer fee for a referred registration (stop overpaying) ([8ecfe6b](https://github.com/chainvue/verus-sdk/commit/8ecfe6b757460e5d19e2c5d4f3abb55c2327c3d1))
+* reject a value-bearing identityUtxo instead of burning it to fee ([7c63a7f](https://github.com/chainvue/verus-sdk/commit/7c63a7f4c0a87c7478ef062bc7d46c4d051ab75d))
+* reject out-of-range identity/transaction parameters at the boundary ([80f027f](https://github.com/chainvue/verus-sdk/commit/80f027f46e30a4a489d40382f9c06a3c83ae715d))
+* require a non-zero expiryHeight for identity unlock ([452b48e](https://github.com/chainvue/verus-sdk/commit/452b48e5854b728f1c4b424536866c0bff2ea157))
+* return token change from mixed UTXOs spent for native value ([96e7901](https://github.com/chainvue/verus-sdk/commit/96e7901582c09ac6e2915f3d7ab59ebacd307441))
+* size the fee from real output bytes for large identity/currency outputs ([b8d3e0b](https://github.com/chainvue/verus-sdk/commit/b8d3e0bb26c83afe9959a2db11cf90bc969883e7))
+* validate contentMultimap hex like contentMap (prevents silent corruption) ([08f51bf](https://github.com/chainvue/verus-sdk/commit/08f51bf147469058ce4a715ea0846247d49e1a51)), closes [#4](https://github.com/chainvue/verus-sdk/issues/4)
+* validate ETH destination hex explicitly (no silent truncation) ([f0dd177](https://github.com/chainvue/verus-sdk/commit/f0dd1770ab67b0bfa3c475f049f42b95eca0e20a))
+* validate identity address kinds and route i-address token change correctly ([29d5f06](https://github.com/chainvue/verus-sdk/commit/29d5f067e6ef956833f23285b5ba1d3a39e9e0af))
+* verify the WIF controls the identity before signing an update/lock/unlock ([b84bee8](https://github.com/chainvue/verus-sdk/commit/b84bee850e172145b4b74199507c4f30ad1b09c6))
+
 # [0.6.0](https://github.com/chainvue/verus-sdk/compare/v0.5.1...v0.6.0) (2026-07-18)
 
 
