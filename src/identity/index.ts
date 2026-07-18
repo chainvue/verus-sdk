@@ -1031,7 +1031,21 @@ export function buildAndSignIdentityUpdate(
   // Verify the signer is a current primary before spending the identity input.
   // (revoke/recover use the revocation/recovery authority — a separate identity
   // whose keys we can't check here — so they are excluded.)
-  if (operation === 'update' || operation === 'lock' || operation === 'unlock') {
+  // update/lock/unlock are authorized by the identity's own primary key(s).
+  // revoke/recover are authorized by the revocation/recovery AUTHORITY — a
+  // separate identity whose keys aren't in identityHex, so uncheckable in
+  // general — EXCEPT the very common self-authority case (authority == this
+  // identity), which reduces to the same primary check. Guard what we can.
+  let requiresPrimary = operation === 'update' || operation === 'lock' || operation === 'unlock';
+  if (!requiresPrimary && (operation === 'revoke' || operation === 'recover')) {
+    const self = identity.getIdentityAddress();
+    const authority =
+      operation === 'revoke'
+        ? identity.revocation_authority?.toAddress()
+        : identity.recovery_authority?.toAddress();
+    requiresPrimary = authority === self;
+  }
+  if (requiresPrimary) {
     const signerAddress = (ECPair.fromWIF(params.wif, verusNetwork) as { getAddress(): string }).getAddress();
     const currentPrimaries = (identity.primary_addresses ?? []).map((k) => k.toAddress());
     if (!currentPrimaries.includes(signerAddress)) {
