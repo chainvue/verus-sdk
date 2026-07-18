@@ -646,7 +646,14 @@ export function buildAndSignCommitment(
   txb.addOutput(commitment.commitmentScript, 0);
 
   if (selection.nativeChange > 0n) {
-    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+    // it throws an untyped "no matching Script".
+    if (params.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+    } else {
+      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    }
   }
 
   const unsignedTx = txb.buildIncomplete();
@@ -814,7 +821,14 @@ function _buildVrscRegistration(
   txb.addOutput(reservationScript, 0);
 
   if (selection.nativeChange > 0n) {
-    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+    // it throws an untyped "no matching Script".
+    if (params.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+    } else {
+      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    }
   }
 
   const unsignedTx = txb.buildIncomplete();
@@ -947,7 +961,14 @@ function _buildSubIdRegistration(
       );
       txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
     } else {
+      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+    // it throws an untyped "no matching Script".
+    if (params.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+    } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    }
     }
   }
 
@@ -1150,7 +1171,14 @@ export function buildAndSignIdentityUpdate(
   }
 
   if (selection.nativeChange > 0n) {
-    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+    // it throws an untyped "no matching Script".
+    if (params.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+    } else {
+      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    }
   }
 
   const fundedTx = txb.buildIncomplete();
