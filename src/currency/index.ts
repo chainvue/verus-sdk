@@ -20,7 +20,7 @@ import BN from 'bn.js';
 import { NETWORK_CONFIG, VERSION_GROUP_ID, IDENTITY_FLAG_ACTIVECURRENCY } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation } from '../signing/index.js';
-import { selectUtxos } from '../utxo/index.js';
+import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
 import { toSafeNumber } from '../utils/index.js';
 import { identityPaymentScript, assertWifIsPrimary } from '../identity/index.js';
 import { validateWif } from '../keys/index.js';
@@ -89,6 +89,17 @@ export function defineCurrency(
     undefined,
     true,
     identityOutputScript.length + currencyDefScript.length,
+  );
+
+  // Currency definition pays only native and emits no token-change output, so a
+  // token-bearing funding UTXO would be silently dropped. Fail closed if one
+  // was selected (both maps empty ⇒ assert no token enters).
+  assertTokenConservation(
+    selection.selected,
+    new Map(),
+    new Map(),
+    systemId,
+    'currency definition',
   );
 
   // Build transaction
