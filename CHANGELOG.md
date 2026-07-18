@@ -1,5 +1,30 @@
 # Changelog
 
+# [0.6.0](https://github.com/chainvue/verus-sdk/compare/v0.5.1...v0.6.0) (2026-07-18)
+
+
+* feat!: require an explicit expiryHeight (0 = never expires) ([77f792b](https://github.com/chainvue/verus-sdk/commit/77f792bc901626f086b849f828193e335d4ec7bb))
+
+
+### Bug Fixes
+
+* assert value conservation on the identity registration path ([d066b5e](https://github.com/chainvue/verus-sdk/commit/d066b5e8cc6e347f30fa0e0b6ca1ea393287a25d))
+* reject address/type mismatch in parseAddress (prevents i-address fund burn) ([1f91d79](https://github.com/chainvue/verus-sdk/commit/1f91d799b9ab10930cc6eac12e167ec4f9f68d6d))
+* reject duplicate UTXO outpoints early with a typed error ([bbef70e](https://github.com/chainvue/verus-sdk/commit/bbef70ee727d9a463c1f50eca580dba2de12208b))
+* reject malformed hex in identity contentMap instead of corrupting it ([fbc2431](https://github.com/chainvue/verus-sdk/commit/fbc2431cf4c9d82bb4b025fdfd66a9cb18f24c75))
+* validateWif no longer accepts the Bitcoin-mainnet prefix (0x80) ([35f6286](https://github.com/chainvue/verus-sdk/commit/35f6286aba6ffabec538e0491b21abd71f587e52))
+
+
+### BREAKING CHANGES
+
+* `expiryHeight` is now required on transfer, transferToken,
+convert, sendCurrency, buildAndSign, createCommitment, registerIdentity,
+updateIdentity, lockIdentity, unlockIdentity, revokeIdentity, recoverIdentity,
+and defineCurrency. Pass `currentBlockHeight + DEFAULT_EXPIRY_DELTA`, or 0 to
+keep the previous never-expiring behavior.
+
+Claude-Session: https://claude.ai/code/session_01LNXxcQ3cdheXfHR1Wh1e1b
+
 ## [0.5.1](https://github.com/chainvue/verus-sdk/compare/v0.5.0...v0.5.1) (2026-07-14)
 
 
