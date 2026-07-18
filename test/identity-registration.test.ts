@@ -188,8 +188,9 @@ describe('buildAndSignRegistration', () => {
 
     expect(result.referralPayments).toBe(3);
     expect(result.referralAmountEach).toBe(2_000_000_000n); // 20 VRSC each
-    // issuer fee = totalFee - 3 * referralAmount = 100 - 60 = 40 VRSC
-    expect(result.registrationFee).toBe(4_000_000_000n);
+    // The registrant's outlay is the discounted issuer fee (80 VRSC), of which
+    // 3×20 goes to referrers and 20 to the miner — verified live on VRSCTEST.
+    expect(result.registrationFee).toBe(calculateRegistrationFees(true).issuerFee);
     expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
   });
 
@@ -394,8 +395,9 @@ describe('buildAndSignRegistration', () => {
       NETWORK,
     );
 
-    // Actual issuer fee = totalFee - numReferrers * referralAmount
-    expect(result.registrationFee).toBe(customFee - 2n * expectedFees.referralAmount);
+    // The registrant funds the discounted issuer fee; referral payouts come out
+    // of it. (Previously the SDK funded the full customFee — a real overpay.)
+    expect(result.registrationFee).toBe(expectedFees.issuerFee);
     expect(result.referralAmountEach).toBe(expectedFees.referralAmount);
     expect(result.referralPayments).toBe(2);
   });
