@@ -87,6 +87,7 @@ describe('message', () => {
       wif: TEST_WIF,
       message: 'Test',
       identityAddress,
+      blockHeight: 10,
     }, 'testnet');
 
     const verifyResult = verifyMessage({
@@ -94,8 +95,59 @@ describe('message', () => {
       signature: signResult.signature,
       signingAddress: 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX', // Different address
       identityAddress,
+      blockHeight: 10,
     }, 'testnet');
 
     expect(verifyResult.valid).toBe(false);
+  });
+
+  it('verifies a daemon-format signature (full CIdentitySignature base64)', () => {
+    // The daemon's signmessage returns base64 of the whole CIdentitySignature,
+    // not just the raw compact signature. verifyMessage must accept both; the
+    // full form self-describes blockHeight/version, so neither is passed here.
+    const identityAddress = deriveIdentityAddress('testmsg', SYSTEM_ID);
+
+    const signResult = signMessage({
+      wif: TEST_WIF,
+      message: 'Daemon format',
+      identityAddress,
+      blockHeight: 123,
+      version: 2,
+    }, 'testnet');
+
+    // identitySignatureHex is the full CIdentitySignature (what the daemon emits).
+    const daemonBase64 = Buffer.from(signResult.identitySignatureHex, 'hex').toString('base64');
+
+    const verifyResult = verifyMessage({
+      message: 'Daemon format',
+      signature: daemonBase64,
+      signingAddress: signResult.signingAddress,
+      identityAddress,
+    }, 'testnet');
+
+    expect(verifyResult.valid).toBe(true);
+    expect(verifyResult.blockHeight).toBe(123); // parsed from the blob, not defaulted
+    expect(verifyResult.version).toBe(2);
+  });
+
+  it('requires an explicit blockHeight when signing', () => {
+    const identityAddress = deriveIdentityAddress('testmsg', SYSTEM_ID);
+    expect(() =>
+      signMessage({ wif: TEST_WIF, message: 'x', identityAddress }, 'testnet'),
+    ).toThrow(/blockHeight is required/);
+  });
+
+  it('rejects an R-address as identityAddress', () => {
+    expect(() =>
+      signMessage(
+        {
+          wif: TEST_WIF,
+          message: 'x',
+          identityAddress: 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX',
+          blockHeight: 1,
+        },
+        'testnet',
+      ),
+    ).toThrow(/identityAddress must be an identity i-address/);
   });
 });
