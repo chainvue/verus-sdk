@@ -30,6 +30,13 @@ export function validateWif(wif: string): { valid: boolean; error?: string } {
       return { valid: false, error: `Invalid WIF prefix: ${prefix}` };
     }
 
+    // A 34-byte WIF is compressed and its trailing byte must be exactly 0x01.
+    // Any other value is a malformed key the daemon rejects; accepting it here
+    // reports a false "valid" that only fails later at signing.
+    if (decoded.length === 34 && decoded[33] !== 0x01) {
+      return { valid: false, error: `Invalid WIF compression flag: ${decoded[33]}` };
+    }
+
     return { valid: true };
   } catch (error) {
     return { valid: false, error: `Invalid WIF format: ${(error as Error).message}` };
