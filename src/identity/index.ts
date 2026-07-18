@@ -930,6 +930,12 @@ function _buildSubIdRegistration(
     systemId,
     undefined,
     true,
+    // The identity and reservation outputs embed the full serialized identity /
+    // advanced name reservation (a large contentMultimap can make them
+    // multi-KB); size the fee from their real bytes, matching the VRSC
+    // registration / update / define paths, so a big sub-ID isn't fee-estimated
+    // below the relay minimum and rejected.
+    identityScript.length + reservationScript.length + feeOutput.script.length,
   );
 
   // The parent-currency fee (requiredCurrencies) is paid to the fee output and
