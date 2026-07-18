@@ -610,9 +610,16 @@ export function buildAndSignCommitment(
   const verusNetwork = getNetwork(network === 'testnet');
   const networkConfig = NETWORK_CONFIG[network];
 
+  // The commitment output is controlled by, and must be spent by, the key that
+  // completes the registration in step 2 — which signs with this same WIF. Using
+  // changeAddress as the control address broke that when changeAddress differed
+  // from the WIF's address (unsignable commitment), or was an i-address
+  // (KeyID.fromAddress laundered it to an uncontrollable key — permanently
+  // unspendable, wasting the commitment fee). Derive it from the WIF instead.
+  const controlAddress = (ECPair.fromWIF(params.wif, verusNetwork) as { getAddress(): string }).getAddress();
   const commitment = prepareNameCommitment(
     params.name,
-    params.changeAddress,
+    controlAddress,
     params.referral,
     params.parent,
     network,
