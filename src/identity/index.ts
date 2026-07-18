@@ -100,6 +100,15 @@ function assertAddressVersion(address: string, expectedVersion: number, label: s
   }
 }
 
+/** minSigs must be an integer in [1, number of primary addresses]. */
+function validateMinSigs(minSigs: number, primaryCount: number): void {
+  if (!Number.isInteger(minSigs) || minSigs < 1 || minSigs > primaryCount) {
+    throw new TransactionBuildError(
+      `minSigs must be an integer between 1 and the number of primary addresses (${primaryCount}), got ${minSigs}`,
+    );
+  }
+}
+
 /** Validate the address-typed params shared by identity update/recover. */
 function validateUpdateAddressParams(params: {
   primaryAddresses?: string[];
@@ -425,6 +434,7 @@ export function createIdentityObject(params: {
   );
   assertAddressVersion(params.revocationAuthority, I_ADDR_VERSION, 'revocationAuthority');
   assertAddressVersion(params.recoveryAuthority, I_ADDR_VERSION, 'recoveryAuthority');
+  validateMinSigs(params.minSigs ?? 1, params.primaryAddresses.length);
   const primaryKeys = params.primaryAddresses.map(addr => KeyID.fromAddress(addr));
 
   const identity = new Identity({
@@ -735,6 +745,16 @@ function _buildVrscRegistration(
       ? params.referralChain
       : commitData.referral ? [commitData.referral] : [];
 
+    // Each entry pays referralAmount = totalFee/(levels+2); more entries than
+    // the chain allows would pay out more than the registration fee, leaving the
+    // transaction under-funded (outputs > inputs).
+    const referralLevels = params.referralLevels ?? DEFAULT_REFERRAL_LEVELS;
+    if (chain.length > referralLevels) {
+      throw new TransactionBuildError(
+        `referralChain has ${chain.length} entries but at most ${referralLevels} referral levels are allowed`,
+      );
+    }
+
     for (const referrerAddr of chain) {
       referralOutputs.push({
         script: buildReferralPaymentScript(referrerAddr),
@@ -977,6 +997,7 @@ export function buildAndSignIdentityUpdate(
         identity.setPrimaryAddresses(params.primaryAddresses);
       }
       if (params.minSigs !== undefined) {
+        validateMinSigs(params.minSigs, identity.primary_addresses?.length ?? 0);
         identity.min_sigs = new BN(params.minSigs);
       }
       if (params.revocationAuthority) {
