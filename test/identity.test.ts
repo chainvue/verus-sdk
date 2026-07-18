@@ -9,6 +9,7 @@ import {
   buildCommitmentScript,
   buildReservationScript,
   buildP2IDScript,
+  identityPaymentScript,
   buildReferralPaymentScript,
   calculateRegistrationFees,
   createIdentityObject,
@@ -121,11 +122,12 @@ describe('identity', () => {
   });
 
   describe('buildP2IDScript', () => {
-    it('should build a valid P2ID script', () => {
+    it('builds the chain-valid CC pay-to-identity script (alias of identityPaymentScript)', () => {
       const iAddr = deriveIdentityAddress('testid', SYSTEM_ID);
       const script = buildP2IDScript(iAddr);
-      // P2ID = OP_DUP(1) OP_HASH160(1) PUSH20(1) <hash>(20) OP_EQUALVERIFY(1) OP_CHECKSIG(1) OP_CHECKCRYPTOCONDITION(1) = 26 bytes
-      expect(script.length).toBe(26);
+      // A Verus P2ID is a CryptoCondition (OptCCParams) output, not the bare
+      // 26-byte OP_DUP...OP_CHECKCRYPTOCONDITION template it used to emit.
+      expect(script.equals(identityPaymentScript(iAddr))).toBe(true);
     });
   });
 
