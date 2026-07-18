@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { defineCurrency } from '../src/currency/index.js';
-import { } from '../src/constants/index.js';
+import { InvalidWifError, TransactionBuildError } from '../src/errors.js';
 import {
   TEST_WIF,
   TEST_ADDRESS,
@@ -101,5 +101,25 @@ describe('currency', () => {
         expiryHeight: 0,
       }, NETWORK),
     ).toThrow(/[Ii]nsufficient/);
+  });
+
+  describe('input validation', () => {
+    const mock = createMockIdentityHex({ name: 'valcoin' });
+    const base = {
+      identityHex: mock.identityHex,
+      identityUtxo: mock.identityUtxo,
+      currencyDefScript: MOCK_CURRENCY_DEF_SCRIPT,
+      utxos: [makeFundingUtxo('aa', 100_000_000n)],
+      changeAddress: TEST_ADDRESS,
+      expiryHeight: 0,
+    };
+
+    it('rejects an invalid WIF up front', () => {
+      expect(() => defineCurrency({ ...base, wif: 'not-a-wif' }, NETWORK)).toThrow(InvalidWifError);
+    });
+
+    it('rejects an empty utxo set up front', () => {
+      expect(() => defineCurrency({ ...base, wif: TEST_WIF, utxos: [] }, NETWORK)).toThrow(TransactionBuildError);
+    });
   });
 });

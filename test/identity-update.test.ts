@@ -132,6 +132,11 @@ describe('buildAndSignIdentityUpdate', () => {
       const params = makeUpdateParams('cmmodd', { contentMultimap: { [key]: 'abc' } });
       expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
     });
+
+    it('rejects a non-i-address contentMultimap key with a typed error', () => {
+      const params = makeUpdateParams('cmmbadkey', { contentMultimap: { 'not-an-iaddress': ['ab'.repeat(32)] } });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
   });
 
   // ─── Lock ──────────────────────────────────────────────
@@ -211,6 +216,9 @@ describe('buildAndSignIdentityUpdate', () => {
   // ─── Revoke ────────────────────────────────────────────
 
   describe('revoke', () => {
+    // The mock defaults its revocation authority to the identity itself.
+    const OTHER_WIF = 'UtJXdBipt7XKxSe3AKFYhXizA5cgCM1ztQLVDANwHtfERydFEnPG'; // → TEST_ADDRESS_B
+
     it('should revoke an identity', () => {
       const params = makeUpdateParams('revokeid');
 
@@ -219,6 +227,36 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.operation).toBe('revoke');
       expect(result.fee).toBeGreaterThan(0n);
+    });
+
+    it('rejects a non-primary WIF when the identity is its own revocation authority', () => {
+      const params = makeUpdateParams('revwrong', { wif: OTHER_WIF });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'revoke')).toThrow(TransactionBuildError);
+    });
+
+    it('does not block revoke when the authority is a different identity (uncheckable offline)', () => {
+      // A separate revocation authority — the signer can't be verified here, so
+      // the primary-controls guard must NOT fire (no false positive). It may
+      // still fail downstream on the funding-input signature; we only assert the
+      // guard itself did not reject.
+      const mock = createMockIdentityHex({
+        name: 'revother',
+        revocationAuthority: deriveIdentityAddress('some-authority', SYSTEM_ID),
+      });
+      expect(() =>
+        buildAndSignIdentityUpdate(
+          {
+            wif: OTHER_WIF,
+            identityHex: mock.identityHex,
+            identityUtxo: mock.identityUtxo,
+            utxos: [makeFundingUtxo('aa', 100_000_000n)],
+            changeAddress: TEST_ADDRESS,
+            expiryHeight: 0,
+          },
+          NETWORK,
+          'revoke',
+        ),
+      ).not.toThrow(/not among the identity's primary addresses/);
     });
   });
 
@@ -301,6 +339,17 @@ describe('buildAndSignIdentityUpdate', () => {
 
     it('accepts a WIF that is a current primary address', () => {
       const params = makeUpdateParams('rightsigner', { primaryAddresses: [TEST_ADDRESS_B] });
+      const result = buildAndSignIdentityUpdate(params, NETWORK, 'update');
+      expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
+    });
+  });
+
+  describe('i-address changeAddress (native change)', () => {
+    it('builds native change to an i-address via P2ID instead of throwing', () => {
+      // Previously utxo-lib's addOutput threw an untyped "no matching Script"
+      // for an i-address change destination.
+      const iAddr = deriveIdentityAddress('changeid', SYSTEM_ID);
+      const params = makeUpdateParams('ichange', { changeAddress: iAddr });
       const result = buildAndSignIdentityUpdate(params, NETWORK, 'update');
       expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
     });
