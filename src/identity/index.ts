@@ -937,7 +937,18 @@ export function buildAndSignIdentityUpdate(
       if (params.contentMultimap) {
         const jsonObj: Record<string, string[]> = {};
         for (const [key, value] of Object.entries(params.contentMultimap)) {
-          jsonObj[key] = Array.isArray(value) ? value : [value];
+          const items = Array.isArray(value) ? value : [value];
+          // Same trap as contentMap: ContentMultiMap.fromJson runs
+          // Buffer.from(_, 'hex') on each array entry with no validation, so a
+          // malformed value is silently truncated/emptied and committed on-chain.
+          for (const item of items) {
+            if (!/^[0-9a-fA-F]*$/.test(item) || item.length % 2 !== 0) {
+              throw new TransactionBuildError(
+                `contentMultimap["${key}"] entries must be even-length hex strings (got ${JSON.stringify(item)})`,
+              );
+            }
+          }
+          jsonObj[key] = items;
         }
         identity.content_multimap = ContentMultiMap.fromJson(jsonObj);
       }

@@ -119,6 +119,19 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.operation).toBe('update');
     });
+
+    // Same silent-corruption trap as contentMap, via ContentMultiMap.fromJson.
+    it('rejects a non-hex contentMultimap value', () => {
+      const key = deriveIdentityAddress('cmmkey', SYSTEM_ID);
+      const params = makeUpdateParams('cmmbad', { contentMultimap: { [key]: ['deadbeefX9'] } });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+
+    it('rejects an odd-length hex contentMultimap value (also the string form)', () => {
+      const key = deriveIdentityAddress('cmmkey', SYSTEM_ID);
+      const params = makeUpdateParams('cmmodd', { contentMultimap: { [key]: 'abc' } });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
   });
 
   // ─── Lock ──────────────────────────────────────────────
