@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/chainvue/verus-sdk/compare/v0.6.2...v0.6.3) (2026-07-18)
+
+
+### Bug Fixes
+
+* assert native value conservation on identity update and currency define ([2ee0199](https://github.com/chainvue/verus-sdk/commit/2ee019954dcbb846d75387963a9b6cf25bbbf17b))
+
 ## [0.6.2](https://github.com/chainvue/verus-sdk/compare/v0.6.1...v0.6.2) (2026-07-18)
 
 
