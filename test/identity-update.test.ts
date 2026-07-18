@@ -271,4 +271,20 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
     });
   });
+
+  describe('signer control (WIF must control the identity)', () => {
+    // Valid Verus WIF for TEST_ADDRESS_B — not the mock identity's primary.
+    const OTHER_WIF = 'UtJXdBipt7XKxSe3AKFYhXizA5cgCM1ztQLVDANwHtfERydFEnPG';
+
+    it('rejects a WIF that is not a current primary address (update)', () => {
+      const params = makeUpdateParams('wrongsigner', { wif: OTHER_WIF });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(TransactionBuildError);
+    });
+
+    it('accepts a WIF that is a current primary address', () => {
+      const params = makeUpdateParams('rightsigner', { primaryAddresses: [TEST_ADDRESS_B] });
+      const result = buildAndSignIdentityUpdate(params, NETWORK, 'update');
+      expect(result.txid).toMatch(/^[0-9a-f]{64}$/);
+    });
+  });
 });
