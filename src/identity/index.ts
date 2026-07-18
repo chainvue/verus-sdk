@@ -100,6 +100,24 @@ function assertAddressVersion(address: string, expectedVersion: number, label: s
   }
 }
 
+/**
+ * Assert the WIF's address is among an identity's current primary addresses.
+ * The fork signs CC (identity) inputs with whatever key it is given, so a WIF
+ * that doesn't control the identity yields a "valid" signed tx the daemon
+ * rejects at broadcast. Used by every path that spends an identity input under
+ * primary authority (currency define; update/lock/unlock check inline).
+ */
+export function assertWifIsPrimary(wif: string, identity: Identity, network: VerusNetwork): void {
+  const signerAddress = (ECPair.fromWIF(wif, network) as { getAddress(): string }).getAddress();
+  const currentPrimaries = (identity.primary_addresses ?? []).map((k) => k.toAddress());
+  if (!currentPrimaries.includes(signerAddress)) {
+    throw new TransactionBuildError(
+      `the provided WIF (${signerAddress}) is not among the identity's primary addresses ` +
+        `[${currentPrimaries.join(', ')}]; it cannot authorize this operation.`,
+    );
+  }
+}
+
 /** minSigs must be an integer in [1, number of primary addresses]. */
 function validateMinSigs(minSigs: number, primaryCount: number): void {
   if (!Number.isInteger(minSigs) || minSigs < 1 || minSigs > primaryCount) {
@@ -299,6 +317,12 @@ export function prepareNameCommitment(
   const salt = generateSalt();
   const systemId = NETWORK_CONFIG[network].chainId;
 
+  // iAddressToHash discards the version byte, so an R-address referral would be
+  // laundered into a hash that names no identity (the daemon rejects the
+  // registration and the commitment fee is wasted). Require an i-address.
+  if (referralIAddress) {
+    assertAddressVersion(referralIAddress, I_ADDR_VERSION, 'referral');
+  }
   const referralHash = referralIAddress
     ? iAddressToHash(referralIAddress)
     : NULL_ID_HASH;
@@ -758,6 +782,10 @@ function _buildVrscRegistration(
     const chain = (params.referralChain && params.referralChain.length > 0)
       ? params.referralChain
       : commitData.referral ? [commitData.referral] : [];
+
+    // Each referrer is paid via IdentityID.fromAddress, which launders a non-
+    // i-address into a nonexistent identity; validate the kind up front.
+    chain.forEach((addr, i) => assertAddressVersion(addr, I_ADDR_VERSION, `referralChain[${i}]`));
 
     // Each entry pays referralAmount = totalFee/(levels+2); more entries than
     // the chain allows would pay out more than the registration fee, leaving the
