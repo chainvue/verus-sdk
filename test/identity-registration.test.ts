@@ -13,6 +13,7 @@ import {
   prepareNameCommitment,
 } from '../src/identity/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
+import { TransactionBuildError } from '../src/errors.js';
 import {
   DEFAULT_REGISTRATION_FEE,
   NETWORK_CONFIG,
@@ -397,5 +398,31 @@ describe('buildAndSignRegistration', () => {
     expect(result.registrationFee).toBe(customFee - 2n * expectedFees.referralAmount);
     expect(result.referralAmountEach).toBe(expectedFees.referralAmount);
     expect(result.referralPayments).toBe(2);
+  });
+
+  it('rejects a referralChain longer than the allowed referral levels', () => {
+    const { commitmentData, commitmentUtxo, fundingUtxos } =
+      createMockRegistrationInputs('toolong', REFERRER_A);
+    const tooLong = [
+      REFERRER_A,
+      REFERRER_B,
+      REFERRER_C,
+      deriveIdentityAddress('referrerd', SYSTEM_ID),
+    ]; // 4 entries, default idReferralLevels is 3
+    expect(() =>
+      buildAndSignRegistration(
+        {
+          wif: TEST_WIF,
+          commitmentUtxo,
+          commitmentData,
+          primaryAddresses: [TEST_ADDRESS],
+          utxos: fundingUtxos,
+          changeAddress: TEST_ADDRESS,
+          expiryHeight: 0,
+          referralChain: tooLong,
+        },
+        NETWORK,
+      ),
+    ).toThrow(TransactionBuildError);
   });
 });
