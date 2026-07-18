@@ -32,7 +32,7 @@ import {
   nameAndParentAddrToIAddr,
   fromBase58Check,
 } from 'verus-typescript-primitives';
-import { script as bscript, opcodes, TransactionBuilder, Transaction, smarttxs } from '@bitgo/utxo-lib';
+import { script as bscript, opcodes, TransactionBuilder, Transaction, smarttxs, ECPair } from '@bitgo/utxo-lib';
 import {
   NETWORK_CONFIG,
   VERSION_GROUP_ID,
@@ -989,6 +989,23 @@ export function buildAndSignIdentityUpdate(
 
   const identity = new Identity();
   identity.fromBuffer(Buffer.from(params.identityHex, 'hex'));
+
+  // update/lock/unlock are authorized by the identity's primary key(s). The fork
+  // signs CC inputs with whatever key it is given, so a WIF that does not control
+  // the identity would yield a "valid" signed tx the daemon rejects at broadcast.
+  // Verify the signer is a current primary before spending the identity input.
+  // (revoke/recover use the revocation/recovery authority — a separate identity
+  // whose keys we can't check here — so they are excluded.)
+  if (operation === 'update' || operation === 'lock' || operation === 'unlock') {
+    const signerAddress = (ECPair.fromWIF(params.wif, verusNetwork) as { getAddress(): string }).getAddress();
+    const currentPrimaries = (identity.primary_addresses ?? []).map((k) => k.toAddress());
+    if (!currentPrimaries.includes(signerAddress)) {
+      throw new TransactionBuildError(
+        `the provided WIF (${signerAddress}) is not among the identity's primary addresses ` +
+          `[${currentPrimaries.join(', ')}]; it cannot authorize a ${operation}.`,
+      );
+    }
+  }
 
   switch (operation) {
     case 'update': {
