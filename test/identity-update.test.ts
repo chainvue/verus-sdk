@@ -188,6 +188,24 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
       expect(result.operation).toBe('unlock');
     });
+
+    it('rejects unlock with expiryHeight 0 (would bypass the timelock)', () => {
+      const mock = createMockIdentityHex({ name: 'unlockzero', flags: 2, unlockAfter: 100_000 });
+      expect(() =>
+        buildAndSignIdentityUpdate(
+          {
+            wif: TEST_WIF,
+            identityHex: mock.identityHex,
+            identityUtxo: mock.identityUtxo,
+            utxos: [makeFundingUtxo('aa', 100_000_000n)],
+            changeAddress: TEST_ADDRESS,
+            expiryHeight: 0,
+          },
+          NETWORK,
+          'unlock',
+        ),
+      ).toThrow(TransactionBuildError);
+    });
   });
 
   // ─── Revoke ────────────────────────────────────────────
