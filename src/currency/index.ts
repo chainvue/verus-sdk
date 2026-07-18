@@ -14,12 +14,12 @@
 export { classifyCurrency, CURRENCY_TYPE_ORDER } from './classify.js';
 export type { CurrencyType } from './classify.js';
 
-import { TransactionBuilder, smarttxs } from '@bitgo/utxo-lib';
+import { TransactionBuilder, Transaction, smarttxs } from '@bitgo/utxo-lib';
 import { Identity, IdentityScript } from 'verus-typescript-primitives';
 import BN from 'bn.js';
 import { NETWORK_CONFIG, VERSION_GROUP_ID, IDENTITY_FLAG_ACTIVECURRENCY } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { signTransactionSmart, getNetwork, resolveExpiryHeight } from '../signing/index.js';
+import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { toSafeNumber } from '../utils/index.js';
 import { identityPaymentScript } from '../identity/index.js';
@@ -139,6 +139,14 @@ export function defineCurrency(
   );
 
   const allUtxos: Utxo[] = [...selection.selected, idUtxo];
+  // Inputs fund the currency-definition value + fee; the identity input/output
+  // are value 0, so the assembled native fee must equal selection.fee.
+  assertNativeConservation(
+    allUtxos,
+    Transaction.fromHex(completedHex, verusNetwork).outs,
+    selection.fee,
+    'currency definition',
+  );
   const { signedTx, txid } = signTransactionSmart(
     completedHex,
     params.wif,
