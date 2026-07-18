@@ -22,6 +22,7 @@ import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { toSafeNumber } from '../utils/index.js';
+import { identityPaymentScript } from '../identity/index.js';
 import { TransactionBuildError } from '../errors.js';
 import type { Utxo, DefineCurrencyParams, DefineCurrencyResult } from '../types/index.js';
 
@@ -87,7 +88,11 @@ export function defineCurrency(
   txb.addOutput(currencyDefScript, toSafeNumber(currencyDefValue));
 
   if (selection.nativeChange > 0n) {
-    txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    if (params.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+    } else {
+      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
+    }
   }
 
   const fundedTx = txb.buildIncomplete();
