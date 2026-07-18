@@ -159,8 +159,9 @@ function buildScenarios(): Scenario[] {
       fee: r.fee,
       inputTotal,
       inputCount: 2,
-      // issuer portion burned: 10e9 * 4/5 (referralLevels=3); 2e9 paid out
-      expectedBurnSats: 8_000_000_000n,
+      // Registrant funds the issuer fee (80 VRSC): 20 to the referrer, 60 burned
+      // to the miner. Verified live on VRSCTEST (inputs 80, referral 20, fee 60).
+      expectedBurnSats: 6_000_000_000n,
     });
   }
 
