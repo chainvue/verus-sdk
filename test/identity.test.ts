@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { Transaction } from '@bitgo/utxo-lib';
 import {
   generateSalt,
   serializeNameReservation,
@@ -14,11 +15,16 @@ import {
   deriveIdentityAddress,
   isVRSCParent,
   prepareNameCommitment,
+  buildAndSignCommitment,
 } from '../src/identity/index.js';
+import { addressToScriptPubKey } from '../src/utils/index.js';
+import { getNetwork } from '../src/signing/index.js';
 import { NETWORK_CONFIG, DEFAULT_REGISTRATION_FEE } from '../src/constants/index.js';
 
 const SYSTEM_ID = NETWORK_CONFIG.testnet.chainId;
 const TEST_ADDR = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';
+// WIF whose address is TEST_ADDR.
+const TEST_WIF = 'UusoQWsobQKUkezgBJa22D9G4t9Avo6k8wD5UUxmmfAEoTN8bawc';
 
 describe('identity', () => {
   describe('generateSalt', () => {
@@ -227,6 +233,26 @@ describe('identity', () => {
       expect(result.serializedCommitmentHash.length).toBe(33);
       expect(result.commitmentScript.length).toBeGreaterThan(0);
       expect(result.identityAddress).toMatch(/^i/);
+    });
+  });
+
+  describe('buildAndSignCommitment control address', () => {
+    it('controls the commitment with the WIF, not changeAddress (step-2 spendable)', () => {
+      const changeAddr = 'RPsQDnaxXgrLjcVBh3SpvCpTabWxAdMdzu'; // != TEST_ADDR (the WIF's address)
+      const script = addressToScriptPubKey(TEST_ADDR).toString('hex');
+      const result = buildAndSignCommitment(
+        { wif: TEST_WIF, name: 'ctrltest', utxos: [{ txid: 'ab'.repeat(32), outputIndex: 0, satoshis: 100_000_000n, script }], changeAddress: changeAddr, expiryHeight: 0 },
+        'testnet',
+      );
+      const tx = Transaction.fromHex(result.signedTx, getNetwork(true));
+      const ccOut = tx.outs.find((o: { value: number }) => o.value === 0);
+      const ccScript = Buffer.from((ccOut as { script: Buffer }).script).toString('hex');
+      const wifHash = addressToScriptPubKey(TEST_ADDR).subarray(3, 23).toString('hex');
+      const changeHash = addressToScriptPubKey(changeAddr).subarray(3, 23).toString('hex');
+      // The commitment's control key is the WIF's hash (verified on VRSCTEST),
+      // never the changeAddress — which previously produced an unspendable commitment.
+      expect(ccScript).toContain(wifHash);
+      expect(ccScript).not.toContain(changeHash);
     });
   });
 
