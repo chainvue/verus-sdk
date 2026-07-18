@@ -59,6 +59,29 @@ export function resolveExpiryHeight(expiryHeight: number | undefined): number {
 }
 
 /**
+ * Assert that a fully-assembled transaction's native value is conserved: the
+ * sum of input values minus the sum of output values must equal the fee the
+ * builder intends to pay. Catches a selection/accounting slip (or a
+ * value-bearing input that would otherwise be burned) before signing — the same
+ * guard buildAndSign and VRSC registration already use.
+ */
+export function assertNativeConservation(
+  inputUtxos: ReadonlyArray<{ satoshis: bigint }>,
+  txOuts: ReadonlyArray<{ value: number }>,
+  expectedFeeSats: bigint,
+  label: string,
+): void {
+  const totalIn = inputUtxos.reduce((sum, u) => sum + u.satoshis, 0n);
+  const totalOut = txOuts.reduce((sum, o) => sum + BigInt(o.value), 0n);
+  const assembled = totalIn - totalOut;
+  if (assembled !== expectedFeeSats) {
+    throw new TransactionBuildError(
+      `${label} value conservation failed: assembled native fee ${assembled} sat != intended ${expectedFeeSats} sat`,
+    );
+  }
+}
+
+/**
  * Get the Verus network config
  */
 export function getNetwork(testnet: boolean = false): VerusNetwork {

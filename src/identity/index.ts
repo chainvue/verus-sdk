@@ -45,7 +45,7 @@ import {
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
-import { signTransactionSmart, getNetwork, resolveExpiryHeight, type VerusNetwork } from '../signing/index.js';
+import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
@@ -1232,6 +1232,14 @@ export function buildAndSignIdentityUpdate(
   );
 
   const allUtxos: Utxo[] = [...selection.selected, idUtxo];
+  // The identity input and its recreated output are both value 0, so the
+  // assembled native fee must equal selection.fee. Fail loudly on any slip.
+  assertNativeConservation(
+    allUtxos,
+    Transaction.fromHex(completedHex, verusNetwork).outs,
+    selection.fee,
+    `identity ${operation}`,
+  );
   const { signedTx, txid } = signTransactionSmart(
     completedHex,
     params.wif,
