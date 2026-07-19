@@ -128,6 +128,10 @@ export function signTransactionSmart(
   for (let i = 0; i < utxos.length; i++) {
     const utxo = utxos[i];
     if (!utxo) continue;
+    // Fork limitation (not fixable here): txb.sign typeforce-bounds the witness
+    // value to Bitcoin's SATOSHI_MAX (21e6 * 1e8). A single input above ~21M
+    // native coins would throw inside the fork; this is far above any realistic
+    // VRSC UTXO value, and toSafeNumber already caps at 2^53-1 before this point.
     txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, toSafeNumber(utxo.satoshis));
   }
 
@@ -200,6 +204,13 @@ export function validateFundedTransaction(
 ): {
   valid: boolean;
   message?: string;
+  // Pass-through of the fork's validateFundedCurrencyTransfer result. On success
+  // it returns per-currency in/out/change/fees/sent maps; only `valid` is
+  // load-bearing for this SDK (money conservation is enforced separately by
+  // assertNativeConservation), the rest is informational.
+  in?: Record<string, number>;
+  out?: Record<string, number>;
+  change?: Record<string, number>;
   fees?: Record<string, number>;
   sent?: Record<string, number>;
 } {
