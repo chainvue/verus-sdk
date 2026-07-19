@@ -20,7 +20,7 @@
  * Phase-0 goldens.
  */
 import { TransactionBuilder, Transaction, smarttxs } from '../fork/boundary.js';
-import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
+import { selectUtxos, assertTokenConservation, decodeUtxo } from '../utxo/index.js';
 import { signTransactionSmart, resolveExpiryHeight, assertNativeConservation, getNetwork } from '../signing/index.js';
 import { toSafeNumber } from '../utils/index.js';
 import { NETWORK_CONFIG, VERSION_GROUP_ID } from '../constants/index.js';
@@ -129,6 +129,29 @@ export function assembleFundedIdentityUpdate(
       `identityUtxo carries ${idUtxo.satoshis} native satoshis, which would be burned to miner fee ` +
         `(the recreated identity output is value 0). Spend that value separately before this operation.`,
     );
+  }
+  // The identity input is grafted on AFTER assertTokenConservation ran over
+  // selection.selected, so any token value it carries sits outside conservation
+  // accounting entirely and would be silently dropped. Mirrors the value-output
+  // assembler's leading-input guard: enforce the assumption this module's doc
+  // comment states rather than trusting it.
+  let idCurrencyValues: Map<string, bigint>;
+  try {
+    ({ currencyValues: idCurrencyValues } = decodeUtxo(idUtxo, systemId));
+  } catch {
+    // An identity output is an EVAL_IDENTITY_PRIMARY CC that decodeUtxo does not
+    // model as a value-bearing output, so a failed decode is the NORMAL path
+    // here. A token-bearing UTXO is a reserve output (eval 8/9), which decodes
+    // cleanly and is still caught below.
+    idCurrencyValues = new Map();
+  }
+  for (const [currency, amount] of idCurrencyValues) {
+    if (currency !== systemId && amount > 0n) {
+      throw new TransactionBuildError(
+        `${intent.label}: identityUtxo carries ${amount} of ${currency}, which is outside token ` +
+          `conservation and would be burned. An identity output must not carry reserve value.`,
+      );
+    }
   }
   const completedHex = completeFundedIdentityUpdate(
     fundedHex,
