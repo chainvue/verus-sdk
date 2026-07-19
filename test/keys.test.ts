@@ -61,6 +61,12 @@ describe('keys', () => {
       const key = wifToPrivateKey(TEST_WIF_A);
       expect(key.length).toBe(32);
     });
+
+    it('rejects a non-Verus (Bitcoin 0x80) WIF instead of returning bytes', () => {
+      const bitcoinWif = 'KwdMAjGmerYanjeui5SHS7JkmpZvVipYvB2LJGU1ZxJwYvP98617';
+      expect(() => wifToPrivateKey(bitcoinWif)).toThrow();
+      expect(() => isCompressedWif(bitcoinWif)).toThrow();
+    });
   });
 
   describe('isCompressedWif', () => {
