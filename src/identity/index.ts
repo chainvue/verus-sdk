@@ -1167,6 +1167,11 @@ export function buildAndSignIdentityUpdate(
         identity.setRecovery(params.recoveryAuthority);
       }
       if (params.contentMap) {
+        // The daemon REPLACES the whole contentmap when the field is provided
+        // (and the contentMultimap branch below already replaces via fromJson).
+        // Merging into the parsed on-chain map instead re-attested stale keys and
+        // gave no way to delete one. Clear first so the provided map is authoritative.
+        identity.content_map.clear();
         for (const [key, value] of Object.entries(params.contentMap)) {
           // Buffer.from(_, 'hex') silently drops non-hex characters and
           // truncates odd-length input, so a malformed value would be committed

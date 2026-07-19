@@ -7,7 +7,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { Transaction, networks } from '@bitgo/utxo-lib';
+import { IdentityScript } from 'verus-typescript-primitives';
 import { buildAndSignIdentityUpdate } from '../src/identity/index.js';
+import { iAddressToHash } from '../src/utils/index.js';
 import {
   TEST_WIF,
   TEST_ADDRESS,
@@ -55,6 +58,55 @@ function makeUpdateParams(name: string, overrides?: Record<string, unknown>) {
 // ─── Update operations ───────────────────────────────────
 
 describe('buildAndSignIdentityUpdate', () => {
+  describe('contentMap replaces, not merges (regression)', () => {
+    // Build an identity carrying content_map {keyB} and its matching identity UTXO.
+    function idWithContentB(name: string, keyB: string) {
+      const iaddr = deriveIdentityAddress(name, VRSCTEST_SYSTEM_ID);
+      const id = createIdentityObject({
+        name,
+        primaryAddresses: [parseRAddress(TEST_ADDRESS)],
+        revocationAuthority: parseIAddress(iaddr),
+        recoveryAuthority: parseIAddress(iaddr),
+        parentIAddress: parseIAddress(VRSCTEST_SYSTEM_ID),
+        systemId: parseIAddress(VRSCTEST_SYSTEM_ID),
+      });
+      id.content_map.set(keyB, Buffer.from('bbbbbbbb', 'hex'));
+      const script = IdentityScript.fromIdentity(id).toBuffer();
+      return {
+        identityHex: id.toBuffer().toString('hex'),
+        identityUtxo: { txid: 'ee'.repeat(32), outputIndex: 0, satoshis: 0n, script: script.toString('hex') },
+      };
+    }
+
+    it('drops the pre-existing content_map key when a new contentMap is provided', () => {
+      const keyB = deriveIdentityAddress('cmoldkey', VRSCTEST_SYSTEM_ID);
+      const keyA = deriveIdentityAddress('cmnewkey', VRSCTEST_SYSTEM_ID);
+      const { identityHex, identityUtxo } = idWithContentB('cmreplace', keyB);
+
+      const result = buildAndSignIdentityUpdate(
+        {
+          wif: TEST_WIF,
+          identityHex,
+          identityUtxo,
+          utxos: [makeFundingUtxo('aa', 100_000_000n)],
+          changeAddress: TEST_ADDRESS,
+          expiryHeight: 0,
+          contentMap: { [keyA]: 'aaaaaaaa' },
+        },
+        NETWORK,
+        'update',
+      );
+
+      const tx = Transaction.fromHex(result.signedTx, networks.verustest);
+      const idOut = Buffer.from((tx.outs[0] as { script: Buffer }).script).toString('hex');
+      const keyAHash = iAddressToHash(keyA).toString('hex');
+      const keyBHash = iAddressToHash(keyB).toString('hex');
+      // The new key is committed; the old key is REPLACED (would still be present if merged).
+      expect(idOut).toContain(keyAHash);
+      expect(idOut).not.toContain(keyBHash);
+    });
+  });
+
   describe('min_sigs enforcement (regression)', () => {
     it('fails closed on a min_sigs>1 identity: the SDK cannot multi-sign a CC input', () => {
       const params = makeUpdateParams('minsigs2', {
