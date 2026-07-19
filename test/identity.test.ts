@@ -234,6 +234,16 @@ describe('identity', () => {
       const a2 = deriveIdentityAddress('name2', SYSTEM_ID);
       expect(a1).not.toBe(a2);
     });
+
+    it('rejects an R-address parent (laundered i-address can never be registered)', () => {
+      expect(() => deriveIdentityAddress('sub', TEST_ADDR)).toThrow(/parent must be an identity i-address/);
+    });
+
+    it('prepareNameCommitment rejects an R-address parent too', () => {
+      expect(() =>
+        prepareNameCommitment('sub', TEST_ADDR, undefined, TEST_ADDR, 'testnet'),
+      ).toThrow(/parent must be an identity i-address/);
+    });
   });
 
   describe('isVRSCParent', () => {
