@@ -93,6 +93,15 @@ export function assembleAndSign(intent: TxIntent): AssembledTx {
   // name-commitment UTXO, which carries none — this enforces the assumption the
   // TxIntent doc states instead of trusting it.
   for (const u of intent.leadingInputs ?? []) {
+    // Native on a leading input folds into the fee (burned to miner), so reject it
+    // — matching the identity-respend assembler, which fails closed on a nonzero
+    // identity UTXO. A name-commitment output is value 0.
+    if (u.satoshis !== 0n) {
+      throw new TransactionBuildError(
+        `${intent.label}: leading input ${u.txid}:${u.outputIndex} carries ${u.satoshis} native satoshis, ` +
+          `which would be burned to miner fee. Spend that value separately first.`,
+      );
+    }
     let currencyValues: Map<string, bigint>;
     try {
       ({ currencyValues } = decodeUtxo(u, systemId));
