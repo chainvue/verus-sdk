@@ -1,5 +1,49 @@
 # Changelog
 
+# [0.9.0](https://github.com/chainvue/verus-sdk/compare/v0.8.0...v0.9.0) (2026-07-19)
+
+
+* feat(identity)!: lockIdentity takes a relative unlockDelayBlocks, not an absolute height ([647a621](https://github.com/chainvue/verus-sdk/commit/647a621c11d45d6d6d50aff956d82b8d347827c7))
+
+
+### Bug Fixes
+
+* **identity:** contentMap update replaces the whole map instead of merging ([3e8335d](https://github.com/chainvue/verus-sdk/commit/3e8335ddb65fae9dab863f16725256960bd22b7b))
+* **identity:** enforce min_sigs on identity update/recover (fail closed) ([5b03b12](https://github.com/chainvue/verus-sdk/commit/5b03b128d64b58fa424b9f36482c6506f4694b90))
+* **identity:** reject referrals on sub-ID name commitments (fail closed) ([93240b4](https://github.com/chainvue/verus-sdk/commit/93240b4fd3d8370b375240d0b949bd597bffeff0))
+* **identity:** require nativeImportFee for sub-ID registration (no silent 0 default) ([91117aa](https://github.com/chainvue/verus-sdk/commit/91117aa65718e9bf40a56258d90f0729e543ced4))
+* **identity:** sub-ID fee output structure depends on the parent's proofprotocol ([a23e3c7](https://github.com/chainvue/verus-sdk/commit/a23e3c70e6ea6c746a76f46dbd12ff49f34e98c6))
+* **identity:** validate contentMap keys/values; forward minSigs on recoverIdentity ([8f12c6f](https://github.com/chainvue/verus-sdk/commit/8f12c6fb7ddfe850f859cbbce5219ca94b2f7002))
+* **identity:** verify the WIF controls the name commitment before step-2 registration ([1cac42d](https://github.com/chainvue/verus-sdk/commit/1cac42decd9caf9a72e7c5347d851abd3d51cdfe))
+* **keys:** validate WIF prefix in wifToPrivateKey / isCompressedWif ([8d1e122](https://github.com/chainvue/verus-sdk/commit/8d1e1222c3b79559af03c91ac61a146a03f31362))
+* **signing:** createTransactionBuilder requires an explicit, validated expiryHeight ([241f435](https://github.com/chainvue/verus-sdk/commit/241f435be03243600086185a2af2b9756ffdd08d))
+* **transfer:** enforce native value conservation on sendCurrency and name commitment ([a609322](https://github.com/chainvue/verus-sdk/commit/a609322cdc5d5346871a1e936bb21bc14f3a637e))
+* **utxo:** reject a native-currency (systemId) entry in requiredCurrencies ([cfd45ed](https://github.com/chainvue/verus-sdk/commit/cfd45ed3ec870cf8e02b7e6bd524e0faeb9faa7d))
+
+
+### BREAKING CHANGES
+
+* **identity:** sub-ID registration now requires params.parentProofProtocol.
+
+Regression tests: pp-2 fee is a reserve output (0 native); pp-1 fee is a
+CReserveTransfer (0.0002 native) byte-matching the fum on-chain output.
+
+Found by the Fable veteran review (identity:498); verified live against fum (pp 1).
+* **signing:** createTransactionBuilder's network and expiryHeight parameters
+are now required (no defaults).
+
+Regression tests: explicit height / explicit 0 build; a timestamp-sized or
+negative height throws. Also adds first coverage for resolveExpiryHeight.
+
+Found by the Fable veteran review (signing:170).
+* LockIdentityParams.unlockAfter is renamed to unlockDelayBlocks
+and is a relative delay in blocks, not an absolute block height.
+
+Regression tests: a normal delay locks; a missing delay throws; a block-height-
+sized delay throws without sanityOverride and builds with it.
+
+Found by the Fable veteran review (lockIdentity absolute-vs-relative).
+
 # [0.8.0](https://github.com/chainvue/verus-sdk/compare/v0.7.0...v0.8.0) (2026-07-19)
 
 
