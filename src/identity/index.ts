@@ -685,6 +685,11 @@ export function buildAndSignCommitment(
   );
 
   const unsignedTx = txb.buildIncomplete();
+  // Native value conservation: the commitment output is 0 and change is native,
+  // so the assembled native fee must equal selection.fee. The fork's absurd-fee
+  // guard is blind for inputs > 2^32 sats (it truncates input value mod 2^32),
+  // so this bigint check is the real backstop against a change-accounting slip.
+  assertNativeConservation(selection.selected, unsignedTx.outs, selection.fee, 'name commitment');
   const { signedTx, txid } = signTransactionSmart(
     unsignedTx.toHex(),
     params.wif,

@@ -97,8 +97,14 @@ export function getNetwork(testnet: boolean = false): VerusNetwork {
  * fee (~100 native) as an implicit miner fee — far above any sane rate cap —
  * so callers that KNOW their intended absolute fee pass it here. It is
  * converted into a rate bound using the unsigned hex size as a lower bound of
- * the final vsize (signatures only grow a tx), so the guard still trips if
- * the actual fee materially exceeds the declared one.
+ * the final vsize (signatures only grow a tx).
+ *
+ * WARNING — do NOT rely on this as a value-conservation backstop. The fork's
+ * `__overMaximumFees` sums input values with `x.value >>> 0`, truncating each
+ * input mod 2^32; for any input above ~42.94 VRSC (2^32 sats) the computed fee
+ * wraps and the guard is effectively blind. Every money path therefore enforces
+ * bigint conservation itself (assertNativeConservation) BEFORE calling this;
+ * this cap is only a coarse secondary sanity bound on small-input transactions.
  */
 export function signTransactionSmart(
   txHex: string,

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { Transaction, networks } from '@bitgo/utxo-lib';
 import { buildAndSign, transfer, transferToken, sendCurrency } from '../src/transfer/index.js';
+import { assertNativeConservation } from '../src/signing/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
 import { InsufficientFundsError, InvalidAddressError, TransactionBuildError } from '../src/errors.js';
 import { NETWORK_CONFIG } from '../src/constants/index.js';
@@ -250,6 +252,41 @@ describe('transfer', () => {
 
     it('rejects a wrong-length ETH destination', () => {
       expect(() => sendCurrency(ethOutput('0xdeadbeef'), 'testnet')).toThrow(InvalidAddressError);
+    });
+  });
+
+  // The fork's absurd-fee guard truncates input value mod 2^32, so it can't be
+  // trusted on large inputs; sendCurrency's validateFundedTransaction reports but
+  // never bounds the fee. assertNativeConservation is now the enforced backstop.
+  describe('native value conservation (regression)', () => {
+    it('assertNativeConservation throws when assembled fee != intended fee', () => {
+      const ins = [{ satoshis: 100_000_000n }];
+      const outs = [{ value: 90_000 }]; // leaves 99_910_000 as "fee"
+      expect(() => assertNativeConservation(ins, outs, 10_000n, 'x')).toThrow(/conservation failed/);
+      expect(() => assertNativeConservation(ins, outs, 99_910_000n, 'x')).not.toThrow();
+    });
+
+    it('a native sendCurrency conserves value: inputs - outputs === reported fee', () => {
+      const nativeUtxo = {
+        txid: 'a'.repeat(64),
+        outputIndex: 0,
+        satoshis: 100_000_000n,
+        script: makeP2PKHScript(TEST_ADDR),
+      };
+      const result = sendCurrency(
+        {
+          wif: TEST_WIF,
+          outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 90_000n, address: TEST_ADDR_B, addressType: 'PKH' }],
+          utxos: [nativeUtxo],
+          changeAddress: TEST_ADDR,
+          expiryHeight: 0,
+        },
+        'testnet',
+      );
+      const tx = Transaction.fromHex(result.signedTx, networks.verustest);
+      const outSum = tx.outs.reduce((s: bigint, o: { value: number }) => s + BigInt(o.value), 0n);
+      // Single 100M input; the built tx must burn exactly the reported fee.
+      expect(100_000_000n - outSum).toBe(result.fee);
     });
   });
 });
