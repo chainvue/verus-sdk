@@ -12,6 +12,7 @@ import { opcodes } from '@bitgo/utxo-lib';
 import { parseSats, toSatoshis, toCoins, toSafeNumber, addressToScriptPubKey } from '../src/utils/index.js';
 import { selectUtxos, decodeUtxo, estimateFee } from '../src/utxo/index.js';
 import { buildTokenChangeOutput } from '../src/identity/index.js';
+import { parseAddress } from '../src/core/brands.js';
 import { InvalidAmountError, InvalidAddressError, TransactionBuildError } from '../src/errors.js';
 import { NETWORK_CONFIG } from '../src/constants/index.js';
 import type { Utxo } from '../src/types/index.js';
@@ -37,7 +38,7 @@ function p2pkhUtxo(satoshis: bigint, index = 0): Utxo {
 
 /** A real EVAL_RESERVE_OUTPUT token UTXO carrying `tokenSats` of TOKEN_ID plus `nativeSats`. */
 function tokenUtxo(tokenSats: bigint, nativeSats: bigint, index = 9): Utxo {
-  const { script } = buildTokenChangeOutput(CHANGE_ADDR, new Map([[TOKEN_ID, tokenSats]]));
+  const { script } = buildTokenChangeOutput(parseAddress(CHANGE_ADDR), new Map([[TOKEN_ID, tokenSats]]));
   return {
     txid: Buffer.alloc(32, index).toString('hex'),
     outputIndex: 0,

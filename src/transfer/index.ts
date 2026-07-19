@@ -24,6 +24,7 @@ import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, validateFundedTransaction, resolveExpiryHeight } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
+import { parseIAddress, parseAddress as parseBrandAddress } from '../core/brands.js';
 import { addressToScriptPubKey, toSafeNumber } from '../utils/index.js';
 import { InsufficientFundsError, InvalidAddressError, InvalidWifError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
@@ -242,7 +243,7 @@ export function sendCurrency(
 
   if (selection.currencyChanges.size > 0) {
     const tokenChange = buildTokenChangeOutput(
-      params.changeAddress,
+      parseBrandAddress(params.changeAddress, 'changeAddress'),
       selection.currencyChanges,
     );
     txb.addOutput(tokenChange.script, toSafeNumber(tokenChange.nativeValue));
@@ -253,7 +254,7 @@ export function sendCurrency(
     // change (an i-address changeAddress) needs the explicit P2ID script —
     // byte-identical to the chain's own pay-to-identity outputs.
     if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }

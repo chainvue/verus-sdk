@@ -27,7 +27,7 @@ import {
   nameAndParentAddrToIAddr,
   fromBase58Check,
 } from 'verus-typescript-primitives';
-import { script as bscript, opcodes, TransactionBuilder, Transaction, smarttxs, ECPair } from '@bitgo/utxo-lib';
+import { TransactionBuilder, Transaction, smarttxs, ECPair } from '@bitgo/utxo-lib';
 import {
   NETWORK_CONFIG,
   VERSION_GROUP_ID,
@@ -39,7 +39,8 @@ import {
 import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
-import { selectUtxos } from '../utxo/index.js';
+import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
+import { parseIAddress, parseRAddress, parseAddress, isIAddress, isRAddress, type IAddress, type RAddress, type Address } from '../core/brands.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
 import type {
@@ -198,7 +199,7 @@ export function serializeCommitmentHash(hash: Buffer): Buffer {
  */
 export function buildCommitmentScript(
   commitmentHashBuf: Buffer,
-  controlAddress: string,
+  controlAddress: RAddress,
 ): Buffer {
   const controlDest = new TxDestination(KeyID.fromAddress(controlAddress));
 
@@ -228,7 +229,7 @@ export function buildCommitmentScript(
  * Build the name reservation output script
  */
 export function buildReservationScript(
-  newIdentityIAddress: string,
+  newIdentityIAddress: IAddress,
   serializedReservation: Buffer,
   isAdvanced: boolean = false,
 ): Buffer {
@@ -275,6 +276,14 @@ export function deriveIdentityAddress(
   name: string,
   parentIAddress?: string
 ): string {
+  // nameAndParentAddrToIAddr hashes fromBase58Check(parent).hash regardless of
+  // version, so an R-address parent is laundered into an identity-versioned hash
+  // that names no real currency. The derived i-address then looks valid but can
+  // never be registered — funds paid to it (pay-to-unregistered-identity) burn,
+  // and a name commitment built with it wastes its fee. Require an i-address.
+  if (parentIAddress) {
+    assertAddressVersion(parentIAddress, I_ADDR_VERSION, 'parent');
+  }
   return nameAndParentAddrToIAddr(name, parentIAddress || undefined);
 }
 
@@ -298,7 +307,14 @@ export function prepareNameCommitment(
   controlAddress: string,
   referralIAddress?: string,
   parentIAddress?: string,
-  network: Network = 'mainnet'
+  network: Network = 'mainnet',
+  /**
+   * Explicit 32-byte salt. Omit for a fresh random salt (the normal path); pass
+   * a fixed value only to make the commitment deterministic for golden/diff
+   * tests. A reused salt on a real registration is a privacy leak, so callers
+   * outside tests must not set it.
+   */
+  salt: Buffer = generateSalt()
 ): {
   salt: Buffer;
   serializedReservation: Buffer;
@@ -307,7 +323,6 @@ export function prepareNameCommitment(
   commitmentScript: Buffer;
   identityAddress: string;
 } {
-  const salt = generateSalt();
   const systemId = NETWORK_CONFIG[network].chainId;
 
   // iAddressToHash discards the version byte, so an R-address referral would be
@@ -344,7 +359,7 @@ export function prepareNameCommitment(
 
   const commitmentHash = calculateCommitmentHash(serializedReservation);
   const serializedCommitmentHash = serializeCommitmentHash(commitmentHash);
-  const commitmentScript = buildCommitmentScript(commitmentHash, controlAddress);
+  const commitmentScript = buildCommitmentScript(commitmentHash, parseRAddress(controlAddress, 'controlAddress'));
 
   return {
     salt,
@@ -357,18 +372,17 @@ export function prepareNameCommitment(
 }
 
 /**
- * Build a P2ID output script (pay to identity)
+ * Build a pay-to-identity output script for an i-address.
+ *
+ * Alias of {@link identityPaymentScript}. This previously emitted the bare
+ * 26-byte template `OP_DUP OP_HASH160 <idhash> OP_EQUALVERIFY OP_CHECKSIG
+ * OP_CHECKCRYPTOCONDITION`, which is NOT a valid Verus scriptPubKey — a Verus
+ * P2ID is a CryptoCondition (OptCCParams) output. Funds sent to the old
+ * template would have gone to a non-standard script the daemon does not treat
+ * as identity-spendable. It now delegates to the chain-verified CC builder.
  */
 export function buildP2IDScript(iAddress: string): Buffer {
-  const idHash = iAddressToHash(iAddress);
-  return bscript.compile([
-    opcodes.OP_DUP,
-    opcodes.OP_HASH160,
-    idHash,
-    opcodes.OP_EQUALVERIFY,
-    opcodes.OP_CHECKSIG,
-    opcodes.OP_CHECKCRYPTOCONDITION,
-  ]);
+  return identityPaymentScript(parseIAddress(iAddress, 'iAddress'));
 }
 
 /**
@@ -377,14 +391,16 @@ export function buildP2IDScript(iAddress: string): Buffer {
  * an identity (verified against on-chain P2ID outputs). Use this for change
  * or payment outputs to an i-address.
  */
-export function identityPaymentScript(iAddress: string): Buffer {
+export function identityPaymentScript(iAddress: IAddress): Buffer {
   return buildReferralPaymentScript(iAddress);
 }
 
 /**
- * Build a CC referral payment output script
+ * Build a CC referral payment output script. Requires an already-parsed
+ * i-address: IdentityID.fromAddress launders the version byte, so accepting a
+ * raw string here is exactly the hole that let a wrong-kind address through.
  */
-export function buildReferralPaymentScript(iAddress: string): Buffer {
+export function buildReferralPaymentScript(iAddress: IAddress): Buffer {
   const identityDest = new TxDestination(IdentityID.fromAddress(iAddress));
 
   // Master: EVAL_NONE outputs have empty master (no index destinations)
@@ -439,18 +455,16 @@ export function calculateRegistrationFees(
  */
 export function createIdentityObject(params: {
   name: string;
-  primaryAddresses: string[];
+  primaryAddresses: RAddress[];
   minSigs?: number;
-  revocationAuthority: string;
-  recoveryAuthority: string;
-  parentIAddress: string;
-  systemId: string;
+  revocationAuthority: IAddress;
+  recoveryAuthority: IAddress;
+  parentIAddress: IAddress;
+  systemId: IAddress;
 }): Identity {
-  params.primaryAddresses.forEach((addr, i) =>
-    assertAddressVersion(addr, PUBKEY_HASH_PREFIX, `primaryAddresses[${i}]`),
-  );
-  assertAddressVersion(params.revocationAuthority, I_ADDR_VERSION, 'revocationAuthority');
-  assertAddressVersion(params.recoveryAuthority, I_ADDR_VERSION, 'recoveryAuthority');
+  // No assertAddressVersion here: the brands guarantee the version bytes. An
+  // R-address primary or an i-address authority is now a compile error at the
+  // call site, where the raw string is parsed.
   validateMinSigs(params.minSigs ?? 1, params.primaryAddresses.length);
   const primaryKeys = params.primaryAddresses.map(addr => KeyID.fromAddress(addr));
 
@@ -497,30 +511,28 @@ export function buildRegistrationFeeOutput(
   _controlAddress: string,
 ): { script: Buffer; nativeValue: bigint } {
   void systemId;
-  return buildTokenChangeOutput(parentCurrencyId, new Map([[parentCurrencyId, feeAmount]]));
+  return buildTokenChangeOutput(parseIAddress(parentCurrencyId, 'parentCurrencyId'), new Map([[parentCurrencyId, feeAmount]]));
 }
 
 /**
  * Build a token change output (EVAL_RESERVE_OUTPUT)
  */
 export function buildTokenChangeOutput(
-  changeAddress: string,
+  changeAddress: Address,
   currencyChanges: Map<string, bigint>,
 ): { script: Buffer; nativeValue: bigint } {
-  // KeyID.fromAddress launders any address to the R-address form, so token
-  // change to an i-address changeAddress was paid to a transparent script
-  // nobody controls (burned on paths with no funded-transfer validator). Build
-  // a pay-to-identity destination for i-addresses, and reject anything that is
-  // neither an R- nor an i-address rather than silently mis-routing it.
-  const version = fromBase58Check(changeAddress).version;
+  // The brand guarantees the version; narrow it to pick the destination form.
+  // A pay-to-identity destination for i-addresses (KeyID.fromAddress would
+  // launder an i-address to a transparent script nobody controls), a KeyID for
+  // R-addresses, and reject a P2SH address (not a valid reserve destination).
   let destination: InstanceType<typeof TxDestination>;
-  if (version === I_ADDR_VERSION) {
+  if (isIAddress(changeAddress)) {
     destination = new TxDestination(IdentityID.fromAddress(changeAddress));
-  } else if (version === PUBKEY_HASH_PREFIX) {
+  } else if (isRAddress(changeAddress)) {
     destination = new TxDestination(KeyID.fromAddress(changeAddress));
   } else {
     throw new TransactionBuildError(
-      `token change address must be an R-address or identity i-address, got version ${version}: ${changeAddress}`,
+      `token change address must be an R-address or identity i-address, got: ${changeAddress}`,
     );
   }
 
@@ -613,6 +625,7 @@ export function buildAndSignCommitment(
     params.referral,
     params.parent,
     network,
+    params.salt,
   );
 
   const utxos = params.utxos;
@@ -642,16 +655,34 @@ export function buildAndSignCommitment(
 
   txb.addOutput(commitment.commitmentScript, 0);
 
-  if (selection.nativeChange > 0n) {
-    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-    // it throws an untyped "no matching Script".
-    if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+  // If native-only UTXOs can't cover the fee, selectUtxos falls back to a
+  // token-bearing UTXO and returns its token value as currencyChanges. Emit it
+  // as a reserve-output change (bundled with the native change) — otherwise
+  // that token value is silently forfeited to the miner.
+  const hasTokenChange = selection.currencyChanges.size > 0;
+  if (hasTokenChange || selection.nativeChange > 0n) {
+    if (hasTokenChange) {
+      const tokenChangeScript = buildTokenChangeOutput(parseAddress(params.changeAddress, 'changeAddress'), selection.currencyChanges);
+      txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
+    } else if (params.changeAddress.startsWith('i')) {
+      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+      // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+      // it throws an untyped "no matching Script".
+      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
   }
+
+  // No token is paid out here (the commitment output carries none), so every
+  // token in the selected inputs must return as change.
+  assertTokenConservation(
+    selection.selected,
+    new Map(),
+    selection.currencyChanges,
+    networkConfig.chainId,
+    'name commitment',
+  );
 
   const unsignedTx = txb.buildIncomplete();
   const { signedTx, txid } = signTransactionSmart(
@@ -704,17 +735,17 @@ export function buildAndSignRegistration(
 
   const identity = createIdentityObject({
     name: commitData.name,
-    primaryAddresses: params.primaryAddresses,
+    primaryAddresses: params.primaryAddresses.map((a, i) => parseRAddress(a, `primaryAddresses[${i}]`)),
     ...(params.minSigs !== undefined ? { minSigs: params.minSigs } : {}),
-    revocationAuthority: params.revocationAuthority || identityAddress,
-    recoveryAuthority: params.recoveryAuthority || identityAddress,
-    parentIAddress,
-    systemId,
+    revocationAuthority: parseIAddress(params.revocationAuthority || identityAddress, 'revocationAuthority'),
+    recoveryAuthority: parseIAddress(params.recoveryAuthority || identityAddress, 'recoveryAuthority'),
+    parentIAddress: parseIAddress(parentIAddress, 'parentIAddress'),
+    systemId: parseIAddress(systemId, 'systemId'),
   });
 
   const identityScript = buildIdentityScript(identity);
   const reservationScript = buildReservationScript(
-    identityAddress,
+    parseIAddress(identityAddress, 'identityAddress'),
     Buffer.from(commitData.namereservationHex, 'hex'),
     isSubId,
   );
@@ -765,7 +796,7 @@ function _buildVrscRegistration(
 
     for (const referrerAddr of chain) {
       referralOutputs.push({
-        script: buildReferralPaymentScript(referrerAddr),
+        script: buildReferralPaymentScript(parseIAddress(referrerAddr, 'referralChain entry')),
         value: fees.referralAmount,
       });
     }
@@ -821,16 +852,34 @@ function _buildVrscRegistration(
 
   txb.addOutput(reservationScript, 0);
 
-  if (selection.nativeChange > 0n) {
-    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-    // it throws an untyped "no matching Script".
-    if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+  // Registration needs ~80-100 native, so Phase-2 selection is especially
+  // likely to exhaust pure-native UTXOs and pull a token-bearing one; return
+  // its token value as reserve-output change instead of forfeiting it to the
+  // miner. (The commitment input carries no currency.)
+  const hasTokenChange = selection.currencyChanges.size > 0;
+  if (hasTokenChange || selection.nativeChange > 0n) {
+    if (hasTokenChange) {
+      const tokenChangeScript = buildTokenChangeOutput(parseAddress(params.changeAddress, 'changeAddress'), selection.currencyChanges);
+      txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
+    } else if (params.changeAddress.startsWith('i')) {
+      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+      // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+      // it throws an untyped "no matching Script".
+      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
   }
+
+  // Referral payouts are native; no token is paid out, so all token value in the
+  // selected inputs must return as change.
+  assertTokenConservation(
+    selection.selected,
+    new Map(),
+    selection.currencyChanges,
+    systemId,
+    'identity registration',
+  );
 
   const unsignedTx = txb.buildIncomplete();
   const allUtxos: Utxo[] = [commitUtxo, ...selection.selected];
@@ -925,6 +974,22 @@ function _buildSubIdRegistration(
     systemId,
     undefined,
     true,
+    // The identity and reservation outputs embed the full serialized identity /
+    // advanced name reservation (a large contentMultimap can make them
+    // multi-KB); size the fee from their real bytes, matching the VRSC
+    // registration / update / define paths, so a big sub-ID isn't fee-estimated
+    // below the relay minimum and rejected.
+    identityScript.length + reservationScript.length + feeOutput.script.length,
+  );
+
+  // The parent-currency fee (requiredCurrencies) is paid to the fee output and
+  // any excess returns as token change; guard that no token value is dropped.
+  assertTokenConservation(
+    selection.selected,
+    requiredCurrencies,
+    selection.currencyChanges,
+    systemId,
+    'sub-ID registration',
   );
 
   const txb = new TransactionBuilder(network);
@@ -957,7 +1022,7 @@ function _buildSubIdRegistration(
   if (hasTokenChange || selection.nativeChange > 0n) {
     if (hasTokenChange) {
       const tokenChangeScript = buildTokenChangeOutput(
-        params.changeAddress,
+        parseAddress(params.changeAddress, 'changeAddress'),
         selection.currencyChanges,
       );
       txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
@@ -966,7 +1031,7 @@ function _buildSubIdRegistration(
     // changeAddress needs the explicit P2ID script (matching sendCurrency), or
     // it throws an untyped "no matching Script".
     if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
@@ -1181,6 +1246,17 @@ export function buildAndSignIdentityUpdate(
     unfundedHex.length / 2,
   );
 
+  // Update spends only native fees and emits no token-change output, so a
+  // token-bearing funding UTXO would be silently dropped. Fail closed if one
+  // was selected (both maps empty ⇒ assert no token enters).
+  assertTokenConservation(
+    selection.selected,
+    new Map(),
+    new Map(),
+    systemId,
+    'identity update',
+  );
+
   const txb = new TransactionBuilder(verusNetwork);
   txb.setVersion(4);
   txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
@@ -1205,7 +1281,7 @@ export function buildAndSignIdentityUpdate(
     // changeAddress needs the explicit P2ID script (matching sendCurrency), or
     // it throws an untyped "no matching Script".
     if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }

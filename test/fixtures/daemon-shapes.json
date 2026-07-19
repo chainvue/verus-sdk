@@ -1,0 +1,11 @@
+{
+  "_provenance": "Structural shapes captured from verusd `registeridentity … true` (returntx) on VRSCTEST via canonicalize(). No addresses/amounts/salts — shape only. Re-record with scripts/record-diff-fixtures.mjs after a daemon upgrade.",
+  "subid-registration": {
+    "note": "The parent-currency fee output must be a plain reserve output (EVAL_RESERVE_OUTPUT=9) holding exactly one reserve currency with zero native value. The pre-fix bug built it as EVAL_RESERVE_TRANSFER (8) carrying 0.0002 native — this shape is what rejects that.",
+    "feeOutput": { "evalCodes": [9], "reserveCurrencyCount": 1, "nativeZero": true }
+  },
+  "vrsc-registration": {
+    "note": "Root (VRSC-parent) registration pays the fee as an implicit native burn; no output carries a reserve currency (identity + reservation are native-0 CC, referral payouts and change are native).",
+    "reserveCarryingOutputs": 0
+  }
+}

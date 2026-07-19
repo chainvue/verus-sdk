@@ -8,6 +8,7 @@ import { TransactionBuilder, networks } from '@bitgo/utxo-lib';
 import { VerusSDK } from '../src/index.js';
 import { summarizeSignedTransaction } from '../src/utils/index.js';
 import { buildReferralPaymentScript, prepareNameCommitment } from '../src/identity/index.js';
+import { parseIAddress } from '../src/core/brands.js';
 import { VERSION_GROUP_ID } from '../src/constants/index.js';
 import {
   TEST_WIF,
@@ -65,7 +66,7 @@ describe('summarizeSignedTransaction', () => {
     // The persistent P2ID ring identity — any registered i-address works.
     const iAddress = 'i5Ej7Bec8AYqxBbFEEd3UCKKhhpqAAm1rh';
     const hex = unsignedTxWithOutputs([
-      { script: buildReferralPaymentScript(iAddress), value: 4_000_000 },
+      { script: buildReferralPaymentScript(parseIAddress(iAddress)), value: 4_000_000 },
     ]);
 
     const summary = summarizeSignedTransaction(hex, NETWORK);

@@ -9,6 +9,7 @@ import {
   buildCommitmentScript,
   buildReservationScript,
   buildP2IDScript,
+  identityPaymentScript,
   buildReferralPaymentScript,
   calculateRegistrationFees,
   createIdentityObject,
@@ -20,6 +21,7 @@ import {
   buildTokenChangeOutput,
 } from '../src/identity/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
+import { parseIAddress, parseRAddress, parseAddress } from '../src/core/brands.js';
 import { getNetwork } from '../src/signing/index.js';
 import { NETWORK_CONFIG, DEFAULT_REGISTRATION_FEE } from '../src/constants/index.js';
 
@@ -98,7 +100,7 @@ describe('identity', () => {
   describe('buildCommitmentScript', () => {
     it('should produce a non-empty script', () => {
       const hash = Buffer.alloc(32, 0xee);
-      const script = buildCommitmentScript(hash, TEST_ADDR);
+      const script = buildCommitmentScript(hash, parseRAddress(TEST_ADDR));
       expect(script.length).toBeGreaterThan(0);
     });
   });
@@ -107,32 +109,33 @@ describe('identity', () => {
     it('should produce a non-empty script for standard reservation', () => {
       const reservation = Buffer.from('test');
       const iAddr = deriveIdentityAddress('testid', SYSTEM_ID);
-      const script = buildReservationScript(iAddr, reservation, false);
+      const script = buildReservationScript(parseIAddress(iAddr), reservation, false);
       expect(script.length).toBeGreaterThan(0);
     });
 
     it('should produce a different script for advanced reservation', () => {
       const reservation = Buffer.from('test');
       const iAddr = deriveIdentityAddress('testid', SYSTEM_ID);
-      const stdScript = buildReservationScript(iAddr, reservation, false);
-      const advScript = buildReservationScript(iAddr, reservation, true);
+      const stdScript = buildReservationScript(parseIAddress(iAddr), reservation, false);
+      const advScript = buildReservationScript(parseIAddress(iAddr), reservation, true);
       expect(stdScript.equals(advScript)).toBe(false);
     });
   });
 
   describe('buildP2IDScript', () => {
-    it('should build a valid P2ID script', () => {
+    it('builds the chain-valid CC pay-to-identity script (alias of identityPaymentScript)', () => {
       const iAddr = deriveIdentityAddress('testid', SYSTEM_ID);
       const script = buildP2IDScript(iAddr);
-      // P2ID = OP_DUP(1) OP_HASH160(1) PUSH20(1) <hash>(20) OP_EQUALVERIFY(1) OP_CHECKSIG(1) OP_CHECKCRYPTOCONDITION(1) = 26 bytes
-      expect(script.length).toBe(26);
+      // A Verus P2ID is a CryptoCondition (OptCCParams) output, not the bare
+      // 26-byte OP_DUP...OP_CHECKCRYPTOCONDITION template it used to emit.
+      expect(script.equals(identityPaymentScript(parseIAddress(iAddr)))).toBe(true);
     });
   });
 
   describe('buildReferralPaymentScript', () => {
     it('should produce a non-empty CC script', () => {
       const iAddr = deriveIdentityAddress('referrer', SYSTEM_ID);
-      const script = buildReferralPaymentScript(iAddr);
+      const script = buildReferralPaymentScript(parseIAddress(iAddr));
       expect(script.length).toBeGreaterThan(0);
     });
   });
@@ -154,7 +157,7 @@ describe('identity', () => {
 
     it('is a reserve output of the fee token at the parent currency address', () => {
       const fee = buildRegistrationFeeOutput(parent, feeAmount, SYSTEM_ID, TEST_ADDR);
-      const equivalent = buildTokenChangeOutput(parent, new Map([[parent, feeAmount]]));
+      const equivalent = buildTokenChangeOutput(parseAddress(parent), new Map([[parent, feeAmount]]));
       expect(fee.script.toString('hex')).toBe(equivalent.script.toString('hex'));
     });
   });
@@ -232,6 +235,16 @@ describe('identity', () => {
       const a2 = deriveIdentityAddress('name2', SYSTEM_ID);
       expect(a1).not.toBe(a2);
     });
+
+    it('rejects an R-address parent (laundered i-address can never be registered)', () => {
+      expect(() => deriveIdentityAddress('sub', TEST_ADDR)).toThrow(/parent must be an identity i-address/);
+    });
+
+    it('prepareNameCommitment rejects an R-address parent too', () => {
+      expect(() =>
+        prepareNameCommitment('sub', TEST_ADDR, undefined, TEST_ADDR, 'testnet'),
+      ).toThrow(/parent must be an identity i-address/);
+    });
   });
 
   describe('isVRSCParent', () => {
@@ -289,18 +302,54 @@ describe('identity', () => {
     });
   });
 
+  describe('token-change safety on the commitment funding path', () => {
+    it('returns token value as change when a token-bearing UTXO funds a commitment (never burns it)', () => {
+      const TOKEN = deriveIdentityAddress('burntok', SYSTEM_ID);
+      const tokenAmount = 500_000_000n; // 5.0 tokens
+      // A reserve-output UTXO carrying tokens AND native value — the only funding
+      // available, so selectUtxos must pull it for the fee.
+      const reserveScript = buildTokenChangeOutput(parseAddress(TEST_ADDR), new Map([[TOKEN, tokenAmount]])).script;
+      const mixedUtxo = {
+        txid: 'cd'.repeat(32),
+        outputIndex: 0,
+        satoshis: 100_000_000n, // 1.0 native to cover the fee
+        script: reserveScript.toString('hex'),
+      };
+
+      const result = buildAndSignCommitment(
+        { wif: TEST_WIF, name: 'burntest', utxos: [mixedUtxo], changeAddress: TEST_ADDR, expiryHeight: 0 },
+        'testnet',
+      );
+
+      // The signed tx must carry a reserve-output change output holding the full
+      // token amount — its script equals a token-change output for that amount.
+      const expectedTokenChange = buildTokenChangeOutput(parseAddress(TEST_ADDR), new Map([[TOKEN, tokenAmount]])).script.toString('hex');
+      const tx = Transaction.fromHex(result.signedTx, getNetwork(true));
+      const scripts = tx.outs.map((o: { script: Buffer }) => Buffer.from(o.script).toString('hex'));
+      expect(scripts).toContain(expectedTokenChange);
+    });
+  });
+
   describe('createIdentityObject', () => {
     it('should create a valid Identity', () => {
       const identity = createIdentityObject({
         name: 'testid',
-        primaryAddresses: [TEST_ADDR],
-        revocationAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
-        recoveryAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
-        parentIAddress: SYSTEM_ID,
-        systemId: SYSTEM_ID,
+        primaryAddresses: [parseRAddress(TEST_ADDR)],
+        revocationAuthority: parseIAddress(deriveIdentityAddress('testid', SYSTEM_ID)),
+        recoveryAuthority: parseIAddress(deriveIdentityAddress('testid', SYSTEM_ID)),
+        parentIAddress: parseIAddress(SYSTEM_ID),
+        systemId: parseIAddress(SYSTEM_ID),
       });
       expect(identity.name).toBe('testid');
       expect(identity.getIdentityAddress()).toMatch(/^i/);
+    });
+
+    it('an R-address parent/systemId is now rejected at parse time (compile error to pass unparsed)', () => {
+      // The version guard moved from createIdentityObject into the brand parser
+      // at the call site; passing a raw R-address is a compile error, and the
+      // runtime rejection lives here.
+      expect(() => parseIAddress(TEST_ADDR, 'parentIAddress')).toThrow(/parentIAddress must be an identity i-address/);
+      expect(() => parseIAddress(TEST_ADDR, 'systemId')).toThrow(/systemId must be an identity i-address/);
     });
   });
 });
