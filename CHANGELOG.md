@@ -1,5 +1,22 @@
 # Changelog
 
+# [0.8.0](https://github.com/chainvue/verus-sdk/compare/v0.7.0...v0.8.0) (2026-07-19)
+
+
+### Bug Fixes
+
+* **identity:** make buildP2IDScript emit the chain-valid CC script, not an invalid template ([f7b6d5c](https://github.com/chainvue/verus-sdk/commit/f7b6d5c8ab07412e48ee5833e81d517680f9f897))
+* **identity:** reject R-address parent in deriveIdentityAddress / name commitment ([cf58cd1](https://github.com/chainvue/verus-sdk/commit/cf58cd18cf8f49cb42432425d0d0859ac3fdd6b0))
+* **identity:** size sub-ID registration fee from real output bytes ([838755c](https://github.com/chainvue/verus-sdk/commit/838755cfba749c7bfdc7b55d1094cf94fe3bab21))
+* **identity:** stop burning token value on commitment and VRSC registration funding ([b46fc86](https://github.com/chainvue/verus-sdk/commit/b46fc86e3f722468c9831b9ca848968bfbc2dec4)), closes [#5](https://github.com/chainvue/verus-sdk/issues/5)
+* **identity:** validate parent and systemId are i-addresses in createIdentityObject ([392a896](https://github.com/chainvue/verus-sdk/commit/392a896881ba8ea2d4d3bf2bf255876b8179a9dd))
+* **utxo:** add independent token conservation guard to identity/currency/sub-ID paths ([7323c6f](https://github.com/chainvue/verus-sdk/commit/7323c6f9ea37d619dacdb49a1211a55769526897))
+
+
+### Features
+
+* **core:** add branded address types + parse-don't-validate constructors (Phase 1.1) ([ab6184d](https://github.com/chainvue/verus-sdk/commit/ab6184dedd9cfbcd92b0060f04b68ddef24085b4))
+
 # [0.7.0](https://github.com/chainvue/verus-sdk/compare/v0.6.3...v0.7.0) (2026-07-18)
 
 
