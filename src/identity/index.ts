@@ -26,16 +26,15 @@ import {
   RESERVE_TRANSFER_VALID,
   RESERVE_TRANSFER_BURN_CHANGE_PRICE,
   DEST_ID,
-} from 'verus-typescript-primitives';
-import { EVALS } from 'verus-typescript-primitives';
+} from '../fork/boundary.js';
+import { EVALS } from '../fork/boundary.js';
 import {
   nameAndParentAddrToIAddr,
   fromBase58Check,
-} from 'verus-typescript-primitives';
-import { TransactionBuilder, Transaction, smarttxs, ECPair } from '@bitgo/utxo-lib';
+} from '../fork/boundary.js';
+import { Transaction, smarttxs, ECPair } from '../fork/boundary.js';
 import {
   NETWORK_CONFIG,
-  VERSION_GROUP_ID,
   DEFAULT_REGISTRATION_FEE,
   DEFAULT_REFERRAL_LEVELS,
   PUBKEY_HASH_PREFIX,
@@ -44,14 +43,14 @@ import {
   RESERVE_TRANSFER_EVAL_PKH,
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber, addressToScriptPubKey } from '../utils/index.js';
-import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
-import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
-import { parseIAddress, parseRAddress, parseAddress, isIAddress, isRAddress, type IAddress, type RAddress, type Address } from '../core/brands.js';
+import { sha256d, writeCompactSize, iAddressToHash, addressToScriptPubKey } from '../utils/index.js';
+import { getNetwork, resolveExpiryHeight, type VerusNetwork } from '../signing/index.js';
+import { assembleAndSign } from '../assemble/assembler.js';
+import { assembleFundedIdentityUpdate } from '../assemble/fundedIdentityUpdate.js';
+import { parseIAddress, parseRAddress, isIAddress, isRAddress, type IAddress, type RAddress, type Address } from '../core/brands.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
 import type {
-  Utxo,
   CreateCommitmentParams,
   CreateCommitmentResult,
   RegisterIdentityParams,
@@ -60,7 +59,7 @@ import type {
   UpdateIdentityResult,
 } from '../types/index.js';
 
-const { createUnfundedIdentityUpdate, completeFundedIdentityUpdate } = smarttxs;
+const { createUnfundedIdentityUpdate } = smarttxs;
 
 // Re-export for convenience
 export { nameAndParentAddrToIAddr };
@@ -675,7 +674,6 @@ export function buildAndSignCommitment(
     throw new TransactionBuildError('At least one UTXO is required');
   }
   const verusNetwork = getNetwork(network === 'testnet');
-  const networkConfig = NETWORK_CONFIG[network];
 
   // The commitment output is controlled by, and must be spent by, the key that
   // completes the registration in step 2 — which signs with this same WIF. Using
@@ -693,79 +691,23 @@ export function buildAndSignCommitment(
     params.salt,
   );
 
-  const utxos = params.utxos;
-  const selection = selectUtxos(
-    utxos,
-    0n,
-    new Map(),
-    1,
-    networkConfig.chainId,
-    undefined,
-    true,
-  );
-
-  const txb = new TransactionBuilder(verusNetwork);
-  txb.setVersion(4);
-  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
-  txb.setVersionGroupId(VERSION_GROUP_ID);
-
-  for (const utxo of selection.selected) {
-    txb.addInput(
-      Buffer.from(utxo.txid, 'hex').reverse(),
-      utxo.outputIndex,
-      0xffffffff,
-      Buffer.from(utxo.script, 'hex'),
-    );
-  }
-
-  txb.addOutput(commitment.commitmentScript, 0);
-
-  // If native-only UTXOs can't cover the fee, selectUtxos falls back to a
-  // token-bearing UTXO and returns its token value as currencyChanges. Emit it
-  // as a reserve-output change (bundled with the native change) — otherwise
-  // that token value is silently forfeited to the miner.
-  const hasTokenChange = selection.currencyChanges.size > 0;
-  if (hasTokenChange || selection.nativeChange > 0n) {
-    if (hasTokenChange) {
-      const tokenChangeScript = buildTokenChangeOutput(parseAddress(params.changeAddress, 'changeAddress'), selection.currencyChanges);
-      txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
-    } else if (params.changeAddress.startsWith('i')) {
-      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-      // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-      // it throws an untyped "no matching Script".
-      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
-    } else {
-      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
-    }
-  }
-
-  // No token is paid out here (the commitment output carries none), so every
-  // token in the selected inputs must return as change.
-  assertTokenConservation(
-    selection.selected,
-    new Map(),
-    selection.currencyChanges,
-    networkConfig.chainId,
-    'name commitment',
-  );
-
-  const unsignedTx = txb.buildIncomplete();
-  // Native value conservation: the commitment output is 0 and change is native,
-  // so the assembled native fee must equal selection.fee. The fork's absurd-fee
-  // guard is blind for inputs > 2^32 sats (it truncates input value mod 2^32),
-  // so this bigint check is the real backstop against a change-accounting slip.
-  assertNativeConservation(selection.selected, unsignedTx.outs, selection.fee, 'name commitment');
-  const { signedTx, txid } = signTransactionSmart(
-    unsignedTx.toHex(),
-    params.wif,
-    selection.selected,
-    verusNetwork,
-  );
+  // The commitment output carries no token and no native value; the assembler
+  // selects funding, emits change, and enforces conservation by construction.
+  const assembled = assembleAndSign({
+    network,
+    wif: params.wif,
+    expiryHeight: params.expiryHeight,
+    funding: params.utxos,
+    outputs: [{ script: commitment.commitmentScript, nativeSat: 0n }],
+    changeAddress: params.changeAddress,
+    fee: { policy: 'estimate' },
+    label: 'name commitment',
+  });
 
   return {
-    signedTx,
-    txid,
-    fee: selection.fee,
+    signedTx: assembled.signedTx,
+    txid: assembled.txid,
+    fee: assembled.fee,
     identityAddress: commitment.identityAddress,
     commitmentData: {
       name: params.name,
@@ -835,10 +777,10 @@ export function buildAndSignRegistration(
   );
 
   if (isSubId) {
-    return _buildSubIdRegistration(params, identity, identityScript, reservationScript, identityAddress, parentIAddress, systemId, verusNetwork);
+    return _buildSubIdRegistration(params, identityScript, reservationScript, identityAddress, parentIAddress, systemId, network);
   }
 
-  return _buildVrscRegistration(params, identityScript, reservationScript, identityAddress, parentIAddress, systemId, verusNetwork);
+  return _buildVrscRegistration(params, identityScript, reservationScript, identityAddress, parentIAddress, network);
 }
 
 function _buildVrscRegistration(
@@ -847,8 +789,7 @@ function _buildVrscRegistration(
   reservationScript: Buffer,
   identityAddress: string,
   parentIAddress: string,
-  systemId: string,
-  network: VerusNetwork,
+  network: Network,
 ): RegisterIdentityResult {
   const commitData = params.commitmentData;
   const hasReferral = !!commitData.referral;
@@ -894,138 +835,62 @@ function _buildVrscRegistration(
   // exactly (totalFee - issuerFee) every referred registration.
   const totalFee = params.registrationFee ?? DEFAULT_REGISTRATION_FEE;
   const totalReferralPayments = referralOutputs.reduce((sum, o) => sum + o.value, 0n);
-  const requiredNative = hasReferral ? fees.issuerFee : totalFee;
-  const numOutputs = 2 + referralOutputs.length + 1;
-  const selection = selectUtxos(
-    params.utxos,
-    requiredNative,
-    new Map(),
-    numOutputs,
-    systemId,
-    undefined,
-    true,
-  );
+  // With a referral the registrant pays the discounted issuer fee, otherwise the
+  // full registration fee. Either way the referral payouts come OUT OF that
+  // outlay; the remainder is burned as the implicit miner fee.
+  const registrationOutlay = hasReferral ? fees.issuerFee : totalFee;
 
-  const txb = new TransactionBuilder(network);
-  txb.setVersion(4);
-  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
-  txb.setVersionGroupId(VERSION_GROUP_ID);
-
-  const commitUtxo = params.commitmentUtxo;
-  txb.addInput(
-    Buffer.from(commitUtxo.txid, 'hex').reverse(),
-    commitUtxo.outputIndex,
-    0xffffffff,
-    Buffer.from(commitUtxo.script, 'hex'),
-  );
-
-  for (const utxo of selection.selected) {
-    txb.addInput(
-      Buffer.from(utxo.txid, 'hex').reverse(),
-      utxo.outputIndex,
-      0xffffffff,
-      Buffer.from(utxo.script, 'hex'),
-    );
-  }
-
-  txb.addOutput(identityScript, 0);
-
-  for (const referralOut of referralOutputs) {
-    txb.addOutput(referralOut.script, toSafeNumber(referralOut.value));
-  }
-
-  txb.addOutput(reservationScript, 0);
-
-  // Registration needs ~80-100 native, so Phase-2 selection is especially
-  // likely to exhaust pure-native UTXOs and pull a token-bearing one; return
-  // its token value as reserve-output change instead of forfeiting it to the
-  // miner. (The commitment input carries no currency.)
-  const hasTokenChange = selection.currencyChanges.size > 0;
-  if (hasTokenChange || selection.nativeChange > 0n) {
-    if (hasTokenChange) {
-      const tokenChangeScript = buildTokenChangeOutput(parseAddress(params.changeAddress, 'changeAddress'), selection.currencyChanges);
-      txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
-    } else if (params.changeAddress.startsWith('i')) {
-      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-      // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-      // it throws an untyped "no matching Script".
-      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
-    } else {
-      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
-    }
-  }
-
-  // Referral payouts are native; no token is paid out, so all token value in the
-  // selected inputs must return as change.
-  assertTokenConservation(
-    selection.selected,
-    new Map(),
-    selection.currencyChanges,
-    systemId,
-    'identity registration',
-  );
-
-  const unsignedTx = txb.buildIncomplete();
-  const allUtxos: Utxo[] = [commitUtxo, ...selection.selected];
-
-  // The registration fee is burned as an IMPLICIT miner fee (identity and
-  // reservation outputs carry 0; referral payouts come out of the total) —
-  // this matches on-chain registrations, and the daemon exempts recognized
-  // identity definitions from its absurd-fee check (IS_HIGH_FEE). utxo-lib's
-  // client-side fee-rate cap (default 2500 sat/vbyte) must be told the
-  // intended absolute fee or build() throws "Transaction has absurd fees".
-  const expectedImplicitFee =
-    commitUtxo.satoshis + requiredNative - totalReferralPayments + selection.fee;
-
-  // Independent value-conservation check on the assembled transaction: recompute
-  // the native fee straight from inputs and outputs and require it to equal the
-  // fee this path intends to pay. buildAndSign has the same guard; registration
-  // moves the largest amounts (the registration fee is burned as implicit fee),
-  // so a selection/accounting slip must fail loudly here instead of being paid
-  // to miners.
-  const assembledNativeFee =
-    allUtxos.reduce((sum, u) => sum + u.satoshis, 0n) -
-    unsignedTx.outs.reduce((sum: bigint, o: { value: number }) => sum + BigInt(o.value), 0n);
-  if (assembledNativeFee !== expectedImplicitFee) {
-    throw new TransactionBuildError(
-      `identity registration value conservation failed: assembled native fee ${assembledNativeFee} sat ` +
-        `!= intended ${expectedImplicitFee} sat`,
-    );
-  }
-
-  const { signedTx, txid } = signTransactionSmart(
-    unsignedTx.toHex(),
-    params.wif,
-    allUtxos,
+  // The identity and reservation outputs carry 0 native; the referral payouts are
+  // the only value-bearing outputs. The rest of the outlay is a DECLARED burn, so
+  // the assembler funds it, sizes the fee cap for it, and enforces conservation.
+  const assembled = assembleAndSign({
     network,
-    expectedImplicitFee,
-  );
+    wif: params.wif,
+    expiryHeight: params.expiryHeight,
+    funding: params.utxos,
+    // The name-commitment output is spent as input 0 (it carries no currency).
+    leadingInputs: [params.commitmentUtxo],
+    outputs: [
+      { script: identityScript, nativeSat: 0n },
+      ...referralOutputs.map((o) => ({ script: o.script, nativeSat: o.value })),
+      { script: reservationScript, nativeSat: 0n },
+    ],
+    changeAddress: params.changeAddress,
+    // Legacy fee estimate: identity + referrals + reservation, plus the one extra
+    // change slot the original path counted on top of selectUtxos' own reserve.
+    feeOutputCount: 2 + referralOutputs.length + 1,
+    fee: {
+      policy: 'declared',
+      burnSat: registrationOutlay - totalReferralPayments,
+      reason: 'identity registration fee (burned as implicit miner fee)',
+    },
+    label: 'identity registration',
+  });
 
   return {
-    signedTx,
-    txid,
-    fee: selection.fee,
+    signedTx: assembled.signedTx,
+    txid: assembled.txid,
+    fee: assembled.fee,
     identityAddress,
     // The registrant's registration outlay: the discounted issuer fee when
     // referred, the full fee otherwise. (Of this, referralPayments go to the
     // referrers and the remainder is the implicit miner fee.)
-    registrationFee: requiredNative,
+    registrationFee: registrationOutlay,
     referralPayments: referralOutputs.length,
     referralAmountEach: fees.referralAmount,
-    inputsUsed: allUtxos.length,
-    nativeChange: selection.nativeChange,
+    inputsUsed: assembled.inputsUsed,
+    nativeChange: assembled.nativeChange,
   };
 }
 
 function _buildSubIdRegistration(
   params: RegisterIdentityParams,
-  identity: Identity,
   identityScript: Buffer,
   reservationScript: Buffer,
   identityAddress: string,
   parentIAddress: string,
   systemId: string,
-  network: VerusNetwork,
+  network: Network,
 ): RegisterIdentityResult {
   const registrationFeeAmount = params.registrationFeeAmount;
   if (!registrationFeeAmount || registrationFeeAmount <= 0n) {
@@ -1068,113 +933,50 @@ function _buildSubIdRegistration(
     );
   }
   const nativeImportFee = params.nativeImportFee;
-  const nativeTarget = feeOutput.nativeValue + nativeImportFee;
 
-  const numOutputs = 4;
-  const selection = selectUtxos(
-    params.utxos,
-    nativeTarget,
-    requiredCurrencies,
-    numOutputs,
-    systemId,
-    undefined,
-    true,
-    // The identity and reservation outputs embed the full serialized identity /
-    // advanced name reservation (a large contentMultimap can make them
-    // multi-KB); size the fee from their real bytes, matching the VRSC
-    // registration / update / define paths, so a big sub-ID isn't fee-estimated
-    // below the relay minimum and rejected.
-    identityScript.length + reservationScript.length + feeOutput.script.length,
-  );
-
-  // The parent-currency fee (requiredCurrencies) is paid to the fee output and
-  // any excess returns as token change; guard that no token value is dropped.
-  assertTokenConservation(
-    selection.selected,
-    requiredCurrencies,
-    selection.currencyChanges,
-    systemId,
-    'sub-ID registration',
-  );
-
-  const txb = new TransactionBuilder(network);
-  txb.setVersion(4);
-  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
-  txb.setVersionGroupId(VERSION_GROUP_ID);
-
-  const commitUtxo = params.commitmentUtxo;
-  txb.addInput(
-    Buffer.from(commitUtxo.txid, 'hex').reverse(),
-    commitUtxo.outputIndex,
-    0xffffffff,
-    Buffer.from(commitUtxo.script, 'hex'),
-  );
-
-  for (const utxo of selection.selected) {
-    txb.addInput(
-      Buffer.from(utxo.txid, 'hex').reverse(),
-      utxo.outputIndex,
-      0xffffffff,
-      Buffer.from(utxo.script, 'hex'),
-    );
-  }
-
-  txb.addOutput(identityScript, 0);
-  txb.addOutput(feeOutput.script, toSafeNumber(feeOutput.nativeValue));
-  txb.addOutput(reservationScript, 0);
-
-  const hasTokenChange = selection.currencyChanges.size > 0;
-  if (hasTokenChange || selection.nativeChange > 0n) {
-    if (hasTokenChange) {
-      const tokenChangeScript = buildTokenChangeOutput(
-        parseAddress(params.changeAddress, 'changeAddress'),
-        selection.currencyChanges,
-      );
-      txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
-    } else {
-      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-    // it throws an untyped "no matching Script".
-    if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
-    } else {
-      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
-    }
-    }
-  }
-
-  const unsignedTx = txb.buildIncomplete();
-  const allUtxos: Utxo[] = [commitUtxo, ...selection.selected];
-
-  // Native value conservation. The parent-currency registration fee is a token
-  // reserve-transfer (selection returns any excess as token change), so the
-  // NATIVE fee this path pays is the commitment input's value (folded to fee,
-  // like VRSC registration) + the native import fee + the miner fee. Verified
-  // live on VRSCTEST: a sub-ID under `ownora` (1.0 token fee) paid 0.02 native.
-  assertNativeConservation(
-    allUtxos,
-    unsignedTx.outs,
-    commitUtxo.satoshis + nativeImportFee + selection.fee,
-    'sub-ID registration',
-  );
-
-  const { signedTx, txid } = signTransactionSmart(
-    unsignedTx.toHex(),
-    params.wif,
-    allUtxos,
+  // The identity + reservation outputs carry 0 native but embed the full
+  // serialized identity / advanced name reservation (a large contentMultimap
+  // makes them multi-KB), so the fee is sized from their real bytes — matching
+  // the VRSC/update/define paths — instead of the fixed smart-output estimate.
+  // The fee output carries the parent-currency registration fee (a reserve output
+  // for pp2, a reserve transfer for pp1); the parent's idimportfees leaves as a
+  // DECLARED native burn. Verified live on VRSCTEST: a sub-ID under `ownora`
+  // (1.0 token fee) paid 0.02 native.
+  const assembled = assembleAndSign({
     network,
-  );
+    wif: params.wif,
+    expiryHeight: params.expiryHeight,
+    funding: params.utxos,
+    // The name-commitment output is spent as input 0 (it carries no currency).
+    leadingInputs: [params.commitmentUtxo],
+    outputs: [
+      { script: identityScript, nativeSat: 0n },
+      { script: feeOutput.script, nativeSat: feeOutput.nativeValue, carries: requiredCurrencies },
+      { script: reservationScript, nativeSat: 0n },
+    ],
+    changeAddress: params.changeAddress,
+    // Legacy fee estimate: identity + fee + reservation, plus the one extra change
+    // slot the original path counted on top of selectUtxos' own reserve.
+    feeOutputCount: 4,
+    extraOutputBytes: identityScript.length + reservationScript.length + feeOutput.script.length,
+    fee: {
+      policy: 'declared',
+      burnSat: nativeImportFee,
+      reason: "parent currency's idimportfees (leaves as native import fee)",
+    },
+    label: 'sub-ID registration',
+  });
 
   return {
-    signedTx,
-    txid,
-    fee: selection.fee,
+    signedTx: assembled.signedTx,
+    txid: assembled.txid,
+    fee: assembled.fee,
     identityAddress,
     registrationFee: registrationFeeAmount,
     referralPayments: 0,
     referralAmountEach: 0n,
-    inputsUsed: allUtxos.length,
-    nativeChange: selection.nativeChange,
+    inputsUsed: assembled.inputsUsed,
+    nativeChange: assembled.nativeChange,
   };
 }
 
@@ -1195,8 +997,6 @@ export function buildAndSignIdentityUpdate(
     throw new TransactionBuildError('At least one funding UTXO is required');
   }
   const verusNetwork = getNetwork(network === 'testnet');
-  const networkConfig = NETWORK_CONFIG[network];
-  const systemId = networkConfig.chainId;
 
   const identity = new Identity();
   identity.fromBuffer(Buffer.from(params.identityHex, 'hex'));
@@ -1391,111 +1191,33 @@ export function buildAndSignIdentityUpdate(
     verusNetwork,
     resolveExpiryHeight(params.expiryHeight),
   );
-
-  const selection = selectUtxos(
-    params.utxos,
-    0n,
-    new Map(),
-    1,
-    systemId,
-    undefined,
-    true,
-    // The identity output embeds the full serialized identity (a large
-    // contentMultimap can make it multi-KB); size the fee from its real bytes
-    // so a big update isn't fee-estimated below the relay minimum.
-    unfundedHex.length / 2,
-  );
-
-  // Update spends only native fees and emits no token-change output, so a
-  // token-bearing funding UTXO would be silently dropped. Fail closed if one
-  // was selected (both maps empty ⇒ assert no token enters).
-  assertTokenConservation(
-    selection.selected,
-    new Map(),
-    new Map(),
-    systemId,
-    'identity update',
-  );
-
-  const txb = new TransactionBuilder(verusNetwork);
-  txb.setVersion(4);
-  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
-  txb.setVersionGroupId(VERSION_GROUP_ID);
-
-  for (const utxo of selection.selected) {
-    txb.addInput(
-      Buffer.from(utxo.txid, 'hex').reverse(),
-      utxo.outputIndex,
-      0xffffffff,
-      Buffer.from(utxo.script, 'hex'),
-    );
-  }
-
   const unfundedTx = Transaction.fromHex(unfundedHex, verusNetwork);
-  for (const out of unfundedTx.outs) {
-    txb.addOutput(out.script, out.value);
-  }
 
-  if (selection.nativeChange > 0n) {
-    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-    // it throws an untyped "no matching Script".
-    if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
-    } else {
-      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
-    }
-  }
-
-  const fundedTx = txb.buildIncomplete();
-  const fundedHex = fundedTx.toHex();
-
-  const prevOutScripts = selection.selected.map(u => Buffer.from(u.script, 'hex'));
-  const idUtxo = params.identityUtxo;
-  // The identity input is spent and its definition output is recreated with
-  // value 0, so any native value riding on identityUtxo would be silently
-  // burned to miner fee. Identity outputs normally carry 0; fail closed if not.
-  if (idUtxo.satoshis !== 0n) {
-    throw new TransactionBuildError(
-      `identityUtxo carries ${idUtxo.satoshis} native satoshis, which would be burned to miner fee ` +
-        `(the recreated identity output is value 0). Spend that value separately before updating.`,
-    );
-  }
-  const completedHex = completeFundedIdentityUpdate(
-    fundedHex,
-    verusNetwork,
-    prevOutScripts,
-    {
-      hash: Buffer.from(idUtxo.txid, 'hex').reverse(),
-      index: idUtxo.outputIndex,
-      sequence: 0xffffffff,
-      script: Buffer.from(idUtxo.script, 'hex'),
-    },
-  );
-
-  const allUtxos: Utxo[] = [...selection.selected, idUtxo];
-  // The identity input and its recreated output are both value 0, so the
-  // assembled native fee must equal selection.fee. Fail loudly on any slip.
-  assertNativeConservation(
-    allUtxos,
-    Transaction.fromHex(completedHex, verusNetwork).outs,
-    selection.fee,
-    `identity ${operation}`,
-  );
-  const { signedTx, txid } = signTransactionSmart(
-    completedHex,
-    params.wif,
-    allUtxos,
-    verusNetwork,
-  );
+  // Respend the identity UTXO and recreate its (value-0) definition output; the
+  // shared assembler funds it, emits native change, grafts on the identity input
+  // (re-signed last by the fork), and enforces native + token conservation.
+  const assembled = assembleFundedIdentityUpdate({
+    network,
+    wif: params.wif,
+    expiryHeight: params.expiryHeight,
+    funding: params.utxos,
+    identityUtxo: params.identityUtxo,
+    outputs: unfundedTx.outs.map((o) => ({ script: o.script, nativeSat: BigInt(o.value) })),
+    changeAddress: params.changeAddress,
+    // The identity output embeds the full serialized identity (a large
+    // contentMultimap can make it multi-KB); size the fee from the unfunded tx's
+    // real bytes so a big update isn't fee-estimated below the relay minimum.
+    extraOutputBytes: unfundedHex.length / 2,
+    label: `identity ${operation}`,
+  });
 
   return {
-    signedTx,
-    txid,
-    fee: selection.fee,
+    signedTx: assembled.signedTx,
+    txid: assembled.txid,
+    fee: assembled.fee,
     identityAddress: identity.getIdentityAddress(),
     operation,
-    inputsUsed: allUtxos.length,
-    nativeChange: selection.nativeChange,
+    inputsUsed: assembled.inputsUsed,
+    nativeChange: assembled.nativeChange,
   };
 }

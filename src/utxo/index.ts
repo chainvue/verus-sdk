@@ -7,7 +7,7 @@
  * All amounts are bigint satoshis — exact integer arithmetic only.
  */
 
-import { smarttxs, script as bscript, opcodes } from '@bitgo/utxo-lib';
+import { smarttxs, script as bscript, opcodes } from '../fork/boundary.js';
 import { NETWORK_CONFIG, DEFAULT_FEE_PER_KB, DUST_THRESHOLD } from '../constants/index.js';
 import { InsufficientFundsError, TransactionBuildError } from '../errors.js';
 import { toSafeNumber } from '../utils/index.js';

@@ -12,6 +12,13 @@
 // self-contained: no fork packages required, no skipLibCheck. It declares only
 // the surface the public API exposes — intentionally minimal, and free of any
 // transitive type dependency (e.g. bn.js).
+//
+// TWO-FILE SPLIT (intentional, do NOT merge): the RICH internal ambient types
+// live in src/types/bitgo-utxo-lib.d.ts and import bn.js + primitives; this
+// CONSUMER shim must stay dependency-free, so it can only be a hand-kept minimal
+// subset. When the public surface changes (VerusNetworkConfig, networks,
+// TransactionBuilder, Identity, nameAndParentAddrToIAddr), update BOTH so they
+// don't drift.
 
 declare module "@bitgo/utxo-lib" {
   export interface VerusNetworkConfig {

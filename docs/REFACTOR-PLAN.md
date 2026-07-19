@@ -124,7 +124,63 @@ until Phase 0's differential harness makes it safely verifiable.
   - [ ] remaining chokepoints: `addressToScriptPubKey` (utils), `validateUpdateAddressParams`,
         the `prepareNameCommitment`/`deriveIdentityAddress` referral+parent guards, and the
         `transfer` address path → then delete the last `assertAddressVersion` sites.
-- [ ] Phase 2 · [ ] Phase 3 · [ ] Phase 4 · [ ] Phase 5
+- [x] **Phase 2 — Fork containment** (done)
+  - [x] 2a: `src/fork/boundary.ts` (single re-export of both forks); all six src
+        modules migrated to import from it; ESLint `no-restricted-imports` fence
+        forbids the raw forks outside `src/fork/`. Behavior-identical (goldens
+        unchanged). primitives is the source of truth for shared CC types;
+        utxo-lib's own tx/crypto surface is re-exported explicitly.
+  - [x] 2b (re-scoped): the two `.d.ts` are NOT merged — the split is intentional
+        (`bitgo-utxo-lib.d.ts` is the rich internal ambient type importing
+        bn.js+primitives; `fork-shims.d.ts` is the dependency-free consumer subset
+        shipped to adopters — one file can't be both). Cross-referenced both with
+        a keep-in-sync note to mitigate drift. Moving the `toSafeNumber` crossing +
+        fork-error wrapping into the boundary is folded into Phase 3, where the
+        assembler owns every boundary crossing (a bigint-in/number-out surface).
+- [x] **Phase 3 — Assemblers** (every selecting/building flow now funnels through one)
+  - [x] 3.1 `src/assemble/assembler.ts` (the value-output assembler) + commitment port — PR #65
+  - [x] 3.2 VRSC identity registration → assembler; added `fee:{policy:'declared',burnSat}`
+        (named implicit burn), `leadingInputs`, `feeOutputCount` — PR #66
+  - [x] 3.3 sub-ID registration → assembler; proved the token side (`carries` on the fee
+        output drives token funding + conservation) — PR #67
+  - [x] 3.4 sendCurrency → assembler; golden added first, then `requiredCurrencies` override
+        (fork-built outputs) + `changeStrategy:'separate'` — PR #68
+  - [x] 3.5 `src/assemble/fundedIdentityUpdate.ts` (the identity-respend assembler) —
+        deduped update/revoke/recover/lock/unlock + defineCurrency into one path — PR #69
+  - Deliberately NOT ported: `buildAndSign` is an explicit-inputs/outputs leaf primitive
+    (no selection, no change) with its own `fee === impliedFee` conservation — the
+    selecting assembler would add nothing. Left as-is.
+  - Every port kept the Phase-0 goldens byte-identical; per-path conservation asserts and
+    change-emission duplication are gone → **classes 2 + 3 (unbalanced/token-dropping/
+    implicit-burn + per-path duplication) structurally closed** for all building flows.
+  - Not yet done (optional follow-ups): the boundary hasn't grown bigint-accepting
+    wrappers (`addOutputSats`/`forkCall`); the assembler still calls `toSafeNumber` at
+    each `addOutput`. Cheap to add later, no behavior change.
+- [x] **Phase 4 — Public-surface hygiene** (two breaking `feat!`)
+  - [x] 4.1 dropped the dead number-money types (CurrencyBalance, Transaction,
+        TransactionDirection, VerusIdentity, ConversionQuote) — PR #71
+  - [x] 4.2 curated the `identity` power-user namespace via `src/identity/public.ts`
+        (8 intentional exports; the ~15 internal builders left the public surface but
+        stay module-exported for cross-file use); `transfer`/`currency` already clean — PR #72
+  - Deliberately NOT done: exporting the brands+parsers (the facade takes strings; the
+    lean public surface is intentional).
+- [x] **Phase 5 — Live differential + docs**
+  - [x] `docs/architecture.md` — the fork-boundary contract, the two assemblers, the
+        unrepresentability table, and the Tier-0/Tier-1 differential strategy; linked from README.
+  - [x] `scripts/live-differential.mjs` — the Tier-1 runner: reduces an SDK hex and a
+        daemon `returntx` hex each to their structural (CC/reserve) output multiset and
+        diffs them. Verified positive (sub-ID vs sub-ID) and negative (sub-ID vs VRSC-reg
+        → correctly fails on the reserve-output difference).
+  - Note: the private RISKS.md "hand-rolled selectUtxos" WATCH item is addressed by the
+    Phase-3 relocation (selection now lives inside the two assemblers, not per-path); the
+    private doc update is the maintainer's. Recording Tier-0 fixtures for the remaining
+    flows (update/revoke/recover, defineCurrency, sendCurrency) via the runner remains an
+    open coverage item — the mechanism is now in place.
+
+Phase 3 note (follow-up): the boundary should grow bigint-accepting wrappers (e.g.
+`addOutputSats(txb, script, sats)` doing `toSafeNumber` internally, `forkCall(fn)`
+wrapping untyped throws) as a cleanup — the two assemblers are now the single home
+for that crossing, so it is a localized change when picked up.
 
 **Coverage gaps to add fixtures for later:** update/revoke/recover, defineCurrency, sendCurrency
 daemon shapes (only sub-ID + VRSC-reg pinned so far).
