@@ -229,7 +229,7 @@ export function buildCommitmentScript(
  * Build the name reservation output script
  */
 export function buildReservationScript(
-  newIdentityIAddress: string,
+  newIdentityIAddress: IAddress,
   serializedReservation: Buffer,
   isAdvanced: boolean = false,
 ): Buffer {
@@ -745,7 +745,7 @@ export function buildAndSignRegistration(
 
   const identityScript = buildIdentityScript(identity);
   const reservationScript = buildReservationScript(
-    identityAddress,
+    parseIAddress(identityAddress, 'identityAddress'),
     Buffer.from(commitData.namereservationHex, 'hex'),
     isSubId,
   );
