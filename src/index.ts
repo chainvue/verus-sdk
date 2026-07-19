@@ -101,7 +101,8 @@ export * as address from './address/index.js';
 export * as keys from './keys/index.js';
 export * as signing from './signing/index.js';
 export * as utxo from './utxo/index.js';
-export * as identity from './identity/index.js';
+// Curated public subset (see identity/public.ts); the full module is internal.
+export * as identity from './identity/public.js';
 export * as transfer from './transfer/index.js';
 export * as message from './message/index.js';
 export * as currency from './currency/index.js';
