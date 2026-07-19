@@ -18,6 +18,7 @@ import {
   createMockIdentityHex,
 } from './fixtures/index.js';
 import { deriveIdentityAddress, buildTokenChangeOutput } from '../src/identity/index.js';
+import { parseAddress } from '../src/core/brands.js';
 import { TransactionBuildError } from '../src/errors.js';
 
 const SYSTEM_ID = VRSCTEST_SYSTEM_ID;
@@ -295,9 +296,9 @@ describe('buildAndSignIdentityUpdate', () => {
       const token = deriveIdentityAddress('sometoken', SYSTEM_ID);
       // Both valid kinds succeed; the i-address path routes to the identity
       // (verified against the daemon) rather than a laundered R-address.
-      expect(() => buildTokenChangeOutput(anIdentity, new Map([[token, 100n]]))).not.toThrow();
-      expect(() => buildTokenChangeOutput(TEST_ADDRESS_B, new Map([[token, 100n]]))).not.toThrow();
-      expect(() => buildTokenChangeOutput('not-a-real-address', new Map([[token, 100n]]))).toThrow();
+      expect(() => buildTokenChangeOutput(parseAddress(anIdentity), new Map([[token, 100n]]))).not.toThrow();
+      expect(() => buildTokenChangeOutput(parseAddress(TEST_ADDRESS_B), new Map([[token, 100n]]))).not.toThrow();
+      expect(() => buildTokenChangeOutput(parseAddress('not-a-real-address'), new Map([[token, 100n]]))).toThrow();
     });
   });
 

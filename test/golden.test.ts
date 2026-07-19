@@ -20,6 +20,7 @@ import {
   buildTokenChangeOutput,
 } from '../src/identity/index.js';
 import { defineCurrency } from '../src/currency/index.js';
+import { parseAddress } from '../src/core/brands.js';
 import type { CommitmentData, Utxo } from '../src/types/index.js';
 import {
   TEST_WIF,
@@ -105,7 +106,7 @@ describe('golden signed-tx bytes (Phase-0 behavior lock)', () => {
     const { commitmentData, commitmentUtxo } = fixedRegInputs('goldsub', { parent });
     // The parent-currency fee is paid from a token-bearing reserve UTXO; a
     // separate native UTXO covers the import + miner fee.
-    const tokenScript = buildTokenChangeOutput(TEST_ADDRESS, new Map([[parent, 100_000_000n]])).script;
+    const tokenScript = buildTokenChangeOutput(parseAddress(TEST_ADDRESS), new Map([[parent, 100_000_000n]])).script;
     const r = buildAndSignRegistration(
       {
         wif: TEST_WIF,

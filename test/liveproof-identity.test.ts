@@ -19,6 +19,7 @@ import {
   deriveIdentityAddress,
   prepareNameCommitment,
 } from '../src/identity/index.js';
+import { parseAddress } from '../src/core/brands.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
 import type { CommitmentData, Utxo } from '../src/types/index.js';
 import {
@@ -172,7 +173,7 @@ function buildScenarios(): Scenario[] {
     const parent = deriveIdentityAddress('pecu', VRSCTEST_SYSTEM_ID);
     const { commitmentData, commitmentUtxo } = registrationInputs('agentone', parent);
     const tokenScript = buildTokenChangeOutput(
-      TEST_ADDRESS,
+      parseAddress(TEST_ADDRESS),
       new Map([[parent, 150_000_000n]]),
     );
     const nativeIn = 50_000_000n;

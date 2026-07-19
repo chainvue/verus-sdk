@@ -17,6 +17,7 @@ import {
   buildTokenChangeOutput,
 } from '../src/identity/index.js';
 import { canonicalize } from './support/canonicalize.js';
+import { parseAddress } from '../src/core/brands.js';
 import daemonShapes from './fixtures/daemon-shapes.json';
 import type { CommitmentData, Utxo } from '../src/types/index.js';
 import {
@@ -52,7 +53,7 @@ describe('Tier-0 differential: SDK structure matches recorded daemon shape', () 
   it('sub-ID registration fee output matches the daemon (reserve output, 1 currency, 0 native)', () => {
     const parent = deriveIdentityAddress('diffparent', VRSCTEST_SYSTEM_ID);
     const { commitmentData, commitmentUtxo } = fixedRegInputs('diffsub', { parent });
-    const tokenScript = buildTokenChangeOutput(TEST_ADDRESS, new Map([[parent, 100_000_000n]])).script;
+    const tokenScript = buildTokenChangeOutput(parseAddress(TEST_ADDRESS), new Map([[parent, 100_000_000n]])).script;
     const r = buildAndSignRegistration(
       {
         wif: TEST_WIF, commitmentUtxo, commitmentData, primaryAddresses: [TEST_ADDRESS],

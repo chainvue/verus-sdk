@@ -24,7 +24,7 @@ import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, validateFundedTransaction, resolveExpiryHeight } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
-import { parseIAddress } from '../core/brands.js';
+import { parseIAddress, parseAddress as parseBrandAddress } from '../core/brands.js';
 import { addressToScriptPubKey, toSafeNumber } from '../utils/index.js';
 import { InsufficientFundsError, InvalidAddressError, InvalidWifError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
@@ -243,7 +243,7 @@ export function sendCurrency(
 
   if (selection.currencyChanges.size > 0) {
     const tokenChange = buildTokenChangeOutput(
-      params.changeAddress,
+      parseBrandAddress(params.changeAddress, 'changeAddress'),
       selection.currencyChanges,
     );
     txb.addOutput(tokenChange.script, toSafeNumber(tokenChange.nativeValue));
