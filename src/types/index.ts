@@ -165,6 +165,12 @@ export interface CreateCommitmentParams {
   referral?: string;
   parent?: string;
   expiryHeight: number;
+  /**
+   * Explicit 32-byte commitment salt. Omit in production for a fresh random
+   * salt; set it only to make the commitment deterministic in golden/diff tests
+   * — reusing a salt on a real registration leaks privacy.
+   */
+  salt?: Buffer;
 }
 
 /** Create commitment result */

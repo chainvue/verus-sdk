@@ -306,7 +306,14 @@ export function prepareNameCommitment(
   controlAddress: string,
   referralIAddress?: string,
   parentIAddress?: string,
-  network: Network = 'mainnet'
+  network: Network = 'mainnet',
+  /**
+   * Explicit 32-byte salt. Omit for a fresh random salt (the normal path); pass
+   * a fixed value only to make the commitment deterministic for golden/diff
+   * tests. A reused salt on a real registration is a privacy leak, so callers
+   * outside tests must not set it.
+   */
+  salt: Buffer = generateSalt()
 ): {
   salt: Buffer;
   serializedReservation: Buffer;
@@ -315,7 +322,6 @@ export function prepareNameCommitment(
   commitmentScript: Buffer;
   identityAddress: string;
 } {
-  const salt = generateSalt();
   const systemId = NETWORK_CONFIG[network].chainId;
 
   // iAddressToHash discards the version byte, so an R-address referral would be
@@ -626,6 +632,7 @@ export function buildAndSignCommitment(
     params.referral,
     params.parent,
     network,
+    params.salt,
   );
 
   const utxos = params.utxos;
