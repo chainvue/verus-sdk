@@ -137,12 +137,31 @@ until Phase 0's differential harness makes it safely verifiable.
         a keep-in-sync note to mitigate drift. Moving the `toSafeNumber` crossing +
         fork-error wrapping into the boundary is folded into Phase 3, where the
         assembler owns every boundary crossing (a bigint-in/number-out surface).
-- [ ] Phase 3 · [ ] Phase 4 · [ ] Phase 5
+- [x] **Phase 3 — Assemblers** (every selecting/building flow now funnels through one)
+  - [x] 3.1 `src/assemble/assembler.ts` (the value-output assembler) + commitment port — PR #65
+  - [x] 3.2 VRSC identity registration → assembler; added `fee:{policy:'declared',burnSat}`
+        (named implicit burn), `leadingInputs`, `feeOutputCount` — PR #66
+  - [x] 3.3 sub-ID registration → assembler; proved the token side (`carries` on the fee
+        output drives token funding + conservation) — PR #67
+  - [x] 3.4 sendCurrency → assembler; golden added first, then `requiredCurrencies` override
+        (fork-built outputs) + `changeStrategy:'separate'` — PR #68
+  - [x] 3.5 `src/assemble/fundedIdentityUpdate.ts` (the identity-respend assembler) —
+        deduped update/revoke/recover/lock/unlock + defineCurrency into one path — PR #69
+  - Deliberately NOT ported: `buildAndSign` is an explicit-inputs/outputs leaf primitive
+    (no selection, no change) with its own `fee === impliedFee` conservation — the
+    selecting assembler would add nothing. Left as-is.
+  - Every port kept the Phase-0 goldens byte-identical; per-path conservation asserts and
+    change-emission duplication are gone → **classes 2 + 3 (unbalanced/token-dropping/
+    implicit-burn + per-path duplication) structurally closed** for all building flows.
+  - Not yet done (optional follow-ups): the boundary hasn't grown bigint-accepting
+    wrappers (`addOutputSats`/`forkCall`); the assembler still calls `toSafeNumber` at
+    each `addOutput`. Cheap to add later, no behavior change.
+- [ ] Phase 4 · [ ] Phase 5
 
-Phase 3 note: the boundary should grow bigint-accepting wrappers (e.g.
+Phase 3 note (follow-up): the boundary should grow bigint-accepting wrappers (e.g.
 `addOutputSats(txb, script, sats)` doing `toSafeNumber` internally, `forkCall(fn)`
-wrapping untyped throws) as the assembler adopts them — that is the natural home
-for the crossing, so it lands with Phase 3 rather than as a standalone churn.
+wrapping untyped throws) as a cleanup — the two assemblers are now the single home
+for that crossing, so it is a localized change when picked up.
 
 **Coverage gaps to add fixtures for later:** update/revoke/recover, defineCurrency, sendCurrency
 daemon shapes (only sub-ID + VRSC-reg pinned so far).
