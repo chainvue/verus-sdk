@@ -38,12 +38,6 @@ export type {
   SignMessageResult,
   VerifyMessageParams,
   VerifyMessageResult,
-  // Shared domain types
-  CurrencyBalance,
-  TransactionDirection,
-  Transaction,
-  VerusIdentity,
-  ConversionQuote,
 } from './types/index.js';
 
 // Currency classification (also available via currency namespace)
