@@ -10,6 +10,7 @@ import BN from 'bn.js';
 import { addressToScriptPubKey } from '../../src/utils/index.js';
 import { NETWORK_CONFIG } from '../../src/constants/index.js';
 import { deriveIdentityAddress, createIdentityObject } from '../../src/identity/index.js';
+import { parseRAddress, parseIAddress } from '../../src/core/brands.js';
 import type { Utxo } from '../../src/types/index.js';
 
 // ─── Test Constants ──────────────────────────────────────
@@ -102,11 +103,11 @@ export function createMockIdentityHex(opts: {
 
   const identity = createIdentityObject({
     name: opts.name,
-    primaryAddresses: opts.primaryAddresses || [TEST_ADDRESS],
-    revocationAuthority: opts.revocationAuthority || identityAddress,
-    recoveryAuthority: opts.recoveryAuthority || identityAddress,
-    parentIAddress: systemId,
-    systemId,
+    primaryAddresses: (opts.primaryAddresses || [TEST_ADDRESS]).map((a) => parseRAddress(a)),
+    revocationAuthority: parseIAddress(opts.revocationAuthority || identityAddress),
+    recoveryAuthority: parseIAddress(opts.recoveryAuthority || identityAddress),
+    parentIAddress: parseIAddress(systemId),
+    systemId: parseIAddress(systemId),
   });
 
   if (opts.flags !== undefined) {

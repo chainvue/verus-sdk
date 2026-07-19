@@ -40,7 +40,7 @@ import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
-import { parseIAddress, type IAddress } from '../core/brands.js';
+import { parseIAddress, parseRAddress, type IAddress, type RAddress } from '../core/brands.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
 import type {
@@ -455,24 +455,16 @@ export function calculateRegistrationFees(
  */
 export function createIdentityObject(params: {
   name: string;
-  primaryAddresses: string[];
+  primaryAddresses: RAddress[];
   minSigs?: number;
-  revocationAuthority: string;
-  recoveryAuthority: string;
-  parentIAddress: string;
-  systemId: string;
+  revocationAuthority: IAddress;
+  recoveryAuthority: IAddress;
+  parentIAddress: IAddress;
+  systemId: IAddress;
 }): Identity {
-  params.primaryAddresses.forEach((addr, i) =>
-    assertAddressVersion(addr, PUBKEY_HASH_PREFIX, `primaryAddresses[${i}]`),
-  );
-  assertAddressVersion(params.revocationAuthority, I_ADDR_VERSION, 'revocationAuthority');
-  assertAddressVersion(params.recoveryAuthority, I_ADDR_VERSION, 'recoveryAuthority');
-  // parent and systemId are laundered by IdentityID.fromAddress too; an
-  // R-address here would be stamped into an identity-versioned hash, yielding a
-  // wrong parent/system the daemon rejects. Guard them for symmetry with the
-  // authority fields above.
-  assertAddressVersion(params.parentIAddress, I_ADDR_VERSION, 'parentIAddress');
-  assertAddressVersion(params.systemId, I_ADDR_VERSION, 'systemId');
+  // No assertAddressVersion here: the brands guarantee the version bytes. An
+  // R-address primary or an i-address authority is now a compile error at the
+  // call site, where the raw string is parsed.
   validateMinSigs(params.minSigs ?? 1, params.primaryAddresses.length);
   const primaryKeys = params.primaryAddresses.map(addr => KeyID.fromAddress(addr));
 
@@ -745,12 +737,12 @@ export function buildAndSignRegistration(
 
   const identity = createIdentityObject({
     name: commitData.name,
-    primaryAddresses: params.primaryAddresses,
+    primaryAddresses: params.primaryAddresses.map((a, i) => parseRAddress(a, `primaryAddresses[${i}]`)),
     ...(params.minSigs !== undefined ? { minSigs: params.minSigs } : {}),
-    revocationAuthority: params.revocationAuthority || identityAddress,
-    recoveryAuthority: params.recoveryAuthority || identityAddress,
-    parentIAddress,
-    systemId,
+    revocationAuthority: parseIAddress(params.revocationAuthority || identityAddress, 'revocationAuthority'),
+    recoveryAuthority: parseIAddress(params.recoveryAuthority || identityAddress, 'recoveryAuthority'),
+    parentIAddress: parseIAddress(parentIAddress, 'parentIAddress'),
+    systemId: parseIAddress(systemId, 'systemId'),
   });
 
   const identityScript = buildIdentityScript(identity);
