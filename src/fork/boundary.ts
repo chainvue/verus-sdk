@@ -28,4 +28,5 @@ export {
   networks,
   script,
   opcodes,
+  address,
 } from '@bitgo/utxo-lib';

@@ -4,7 +4,13 @@
 
 import { createHash } from 'crypto';
 import bs58check from 'bs58check';
-import { fromBase58Check } from '../fork/boundary.js';
+import {
+  fromBase58Check,
+  Transaction,
+  address as addressLib,
+  networks,
+  smarttxs,
+} from '../fork/boundary.js';
 import { NETWORK_CONFIG } from '../constants/index.js';
 import { InvalidAddressError, InvalidAmountError } from '../errors.js';
 
@@ -190,11 +196,6 @@ export function summarizeSignedTransaction(
   hex: string,
   network: 'mainnet' | 'testnet'
 ): { txid: string; inputs: DecodedInput[]; outputs: DecodedOutput[] } {
-  // Lazy require keeps utils' import graph light for non-tx consumers. The
-  // fork's ambient module declaration (bitgo-utxo-lib.d.ts) types the shape.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deliberate lazy load; see above
-  const utxolib = require('@bitgo/utxo-lib') as typeof import('@bitgo/utxo-lib');
-  const { Transaction, address: addressLib, networks, smarttxs } = utxolib;
   const net = network === 'testnet' ? networks.verustest : networks.verus;
   const chainId: string =
     network === 'testnet' ? NETWORK_CONFIG.testnet.chainId : NETWORK_CONFIG.mainnet.chainId;
