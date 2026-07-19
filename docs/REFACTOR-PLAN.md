@@ -108,9 +108,16 @@ until Phase 0's differential harness makes it safely verifiable.
 
 ## Status
 
-- [ ] **Phase 0** — in progress
-  - [ ] PR 0.1: deterministic salt param + golden-byte snapshots (SDK-only)
-  - [ ] PR 0.2: canonicalizer + recorded Tier-0 daemon fixtures + CI diff test
+- [x] **Phase 0** — landed in PR #41 (`refactor/phase-0-golden-net`)
+  - [x] PR 0.1: deterministic salt param + golden-byte snapshots (`test/golden.test.ts`)
+  - [x] PR 0.2: `canonicalize()` (`test/support/canonicalize.ts`) + recorded Tier-0 daemon
+        shapes (`test/fixtures/daemon-shapes.json`, recorder `scripts/record-diff-fixtures.mjs`)
+        + hermetic diff test (`test/differential.test.ts`). Current SDK output confirmed
+        daemon-shaped (sub-ID fee = EVAL_RESERVE_OUTPUT/1 currency/0 native; VRSC reg =
+        no reserve outputs).
 - [ ] Phase 1 · [ ] Phase 2 · [ ] Phase 3 · [ ] Phase 4 · [ ] Phase 5
+
+**Next:** Phase 1 (brands). Coverage gaps to add fixtures for later: update/revoke/recover,
+defineCurrency, sendCurrency daemon shapes (only sub-ID + VRSC-reg pinned so far).
 
 Update this section as phases land.
