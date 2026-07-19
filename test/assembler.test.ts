@@ -30,13 +30,12 @@ describe('assembleAndSign: leading-input token guard', () => {
     ).toThrow(/leading input .* carries .* outside token conservation/);
   });
 
-  it('accepts a native-only (zero-token) leading input', () => {
-    // A commitment-style leading input carrying no token passes the guard; it may
-    // still fail later for unrelated reasons, so we only assert it is NOT the
-    // token-guard error that surfaces.
-    const nativeLeading = makeFundingUtxo('cd', 0n);
-    let err: unknown;
-    try {
+  it('fails closed when a leading input carries native value (would burn to fee)', () => {
+    // Native on a leading input folds into the fee — burned to miner. The
+    // identity-respend assembler fails closed on the same; the value-output
+    // assembler must match. A name-commitment output is value 0.
+    const nativeLeading = makeFundingUtxo('cd', 5_000_000n);
+    expect(() =>
       assembleAndSign({
         network: NETWORK,
         wif: TEST_WIF,
@@ -47,10 +46,33 @@ describe('assembleAndSign: leading-input token guard', () => {
         changeAddress: TEST_ADDRESS,
         fee: { policy: 'estimate' },
         label: 'test-native-leading',
+      }),
+    ).toThrow(/carries 5000000 native satoshis, which would be burned/);
+  });
+
+  it('accepts a zero-native, zero-token leading input', () => {
+    // A commitment-style leading input (0 native, no token) passes both guards; it
+    // may still fail later for unrelated reasons, so we only assert neither guard
+    // error surfaces.
+    const cleanLeading = makeFundingUtxo('cd', 0n);
+    let err: unknown;
+    try {
+      assembleAndSign({
+        network: NETWORK,
+        wif: TEST_WIF,
+        expiryHeight: 0,
+        funding: [makeFundingUtxo('aa', 100_000_000n)],
+        leadingInputs: [cleanLeading],
+        outputs: [{ script: Buffer.from(`76a914${'00'.repeat(20)}88ac`, 'hex'), nativeSat: 0n }],
+        changeAddress: TEST_ADDRESS,
+        fee: { policy: 'estimate' },
+        label: 'test-clean-leading',
       });
     } catch (e) {
       err = e;
     }
-    expect(String((err as Error | undefined)?.message ?? '')).not.toMatch(/outside token conservation/);
+    const msg = String((err as Error | undefined)?.message ?? '');
+    expect(msg).not.toMatch(/outside token conservation/);
+    expect(msg).not.toMatch(/would be burned/);
   });
 });
