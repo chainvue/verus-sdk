@@ -100,7 +100,7 @@ describe('identity', () => {
   describe('buildCommitmentScript', () => {
     it('should produce a non-empty script', () => {
       const hash = Buffer.alloc(32, 0xee);
-      const script = buildCommitmentScript(hash, TEST_ADDR);
+      const script = buildCommitmentScript(hash, parseRAddress(TEST_ADDR));
       expect(script.length).toBeGreaterThan(0);
     });
   });
