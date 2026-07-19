@@ -14,12 +14,13 @@
  * Ported flows must stay byte-identical to the Phase-0 golden snapshots.
  */
 import { TransactionBuilder } from '../fork/boundary.js';
-import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
+import { selectUtxos, assertTokenConservation, decodeUtxo } from '../utxo/index.js';
 import { signTransactionSmart, resolveExpiryHeight, assertNativeConservation, getNetwork } from '../signing/index.js';
 import { toSafeNumber } from '../utils/index.js';
 import { NETWORK_CONFIG, VERSION_GROUP_ID } from '../constants/index.js';
 import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { parseAddress, parseIAddress } from '../core/brands.js';
+import { TransactionBuildError } from '../errors.js';
 import type { Network } from '../constants/index.js';
 import type { Utxo } from '../types/index.js';
 
@@ -85,6 +86,32 @@ export interface AssembledTx {
 export function assembleAndSign(intent: TxIntent): AssembledTx {
   const verusNetwork = getNetwork(intent.network === 'testnet');
   const systemId = NETWORK_CONFIG[intent.network].chainId;
+
+  // Leading inputs sit OUTSIDE the token-conservation check below (which only
+  // sees the funding selection), so a leading input carrying token value would be
+  // silently burned. Fail closed. Today the only leading input is the SDK-built
+  // name-commitment UTXO, which carries none — this enforces the assumption the
+  // TxIntent doc states instead of trusting it.
+  for (const u of intent.leadingInputs ?? []) {
+    let currencyValues: Map<string, bigint>;
+    try {
+      ({ currencyValues } = decodeUtxo(u, systemId));
+    } catch {
+      // Undecodable smart output — e.g. the name-commitment's eval-17 CC, which
+      // unpackOutput doesn't model. It is not a reserve output, so it carries no
+      // token value. A token-bearing leading input IS a reserve output (eval 8/9)
+      // and decodes cleanly, so it is still caught below.
+      continue;
+    }
+    for (const [currency, amount] of currencyValues) {
+      if (currency !== systemId && amount > 0n) {
+        throw new TransactionBuildError(
+          `${intent.label}: leading input ${u.txid}:${u.outputIndex} carries ${amount} of ${currency}, ` +
+            `which is outside token conservation and would be burned. Fund token-bearing inputs through the funding path.`,
+        );
+      }
+    }
+  }
 
   // Funding requirements are DERIVED from the declared outputs — never restated
   // by the caller (the token-burn class came from a path building these by hand).
