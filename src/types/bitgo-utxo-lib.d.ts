@@ -1,3 +1,7 @@
+// RICH internal ambient types for the fork (imports bn.js + primitives). The
+// dependency-free CONSUMER subset shipped to adopters is src/fork-shims.d.ts —
+// keep the shared public surface (VerusNetworkConfig, networks,
+// TransactionBuilder, Identity, nameAndParentAddrToIAddr) in sync between the two.
 declare module '@bitgo/utxo-lib' {
   import BN from 'bn.js';
   import type { TransferDestination } from 'verus-typescript-primitives';

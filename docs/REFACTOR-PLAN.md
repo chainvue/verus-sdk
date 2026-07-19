@@ -124,17 +124,25 @@ until Phase 0's differential harness makes it safely verifiable.
   - [ ] remaining chokepoints: `addressToScriptPubKey` (utils), `validateUpdateAddressParams`,
         the `prepareNameCommitment`/`deriveIdentityAddress` referral+parent guards, and the
         `transfer` address path → then delete the last `assertAddressVersion` sites.
-- [~] **Phase 2 — Fork containment** (in progress)
+- [x] **Phase 2 — Fork containment** (done)
   - [x] 2a: `src/fork/boundary.ts` (single re-export of both forks); all six src
         modules migrated to import from it; ESLint `no-restricted-imports` fence
         forbids the raw forks outside `src/fork/`. Behavior-identical (goldens
         unchanged). primitives is the source of truth for shared CC types;
         utxo-lib's own tx/crypto surface is re-exported explicitly.
-  - [ ] 2b: merge the two `.d.ts` (`src/types/bitgo-utxo-lib.d.ts` +
-        `src/fork-shims.d.ts`) into one source of truth + generate the consumer
-        shim from it in `finalize-types.mjs`; move `toSafeNumber` crossing +
-        fork-error wrapping into the boundary.
+  - [x] 2b (re-scoped): the two `.d.ts` are NOT merged — the split is intentional
+        (`bitgo-utxo-lib.d.ts` is the rich internal ambient type importing
+        bn.js+primitives; `fork-shims.d.ts` is the dependency-free consumer subset
+        shipped to adopters — one file can't be both). Cross-referenced both with
+        a keep-in-sync note to mitigate drift. Moving the `toSafeNumber` crossing +
+        fork-error wrapping into the boundary is folded into Phase 3, where the
+        assembler owns every boundary crossing (a bigint-in/number-out surface).
 - [ ] Phase 3 · [ ] Phase 4 · [ ] Phase 5
+
+Phase 3 note: the boundary should grow bigint-accepting wrappers (e.g.
+`addOutputSats(txb, script, sats)` doing `toSafeNumber` internally, `forkCall(fn)`
+wrapping untyped throws) as the assembler adopts them — that is the natural home
+for the crossing, so it lands with Phase 3 rather than as a standalone churn.
 
 **Coverage gaps to add fixtures for later:** update/revoke/recover, defineCurrency, sendCurrency
 daemon shapes (only sub-ID + VRSC-reg pinned so far).
