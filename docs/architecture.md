@@ -42,9 +42,13 @@ the daemon's (see [signing & wire format](./signing-and-wire.md)), but they are 
 The fork is a git-pinned VerusCoin fork on that old base — **not replaceable**
 (nothing else speaks Verus CC/identity/reserve), so the fix is **containment**.
 
-**`src/fork/boundary.ts` is the only module allowed to import the forks.** An
-ESLint `no-restricted-imports` rule fails the build on any raw fork import
-outside `src/fork/`. Every other module builds on the controlled re-export. This
+**`src/fork/boundary.ts` is the only module allowed to import the forks.** ESLint
+fails the build on any raw fork import outside `src/fork/`, in every import form:
+`no-restricted-imports` covers static `import` / `export … from`, and a pair of
+`no-restricted-syntax` selectors cover `require()` and dynamic `import()` (which
+`no-restricted-imports` does not match). Every other module builds on the
+controlled re-export; `test/fork-containment.test.ts` asserts the same invariant
+independently of the lint config. This
 means the number-money crossing (`toSafeNumber`, bigint → float64) and the
 untyped-throw surface live in exactly one place instead of six, and a dependency
 bump has one blast radius to audit.
