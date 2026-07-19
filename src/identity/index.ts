@@ -335,6 +335,17 @@ export function prepareNameCommitment(
   // registration and the commitment fee is wasted). Require an i-address.
   if (referralIAddress) {
     assertAddressVersion(referralIAddress, I_ADDR_VERSION, 'referral');
+    // A sub-ID commitment (non-VRSC parent) would bake the referral into the
+    // advanced reservation hash, but _buildSubIdRegistration emits NO referral
+    // payout — the registration would then mismatch its own committed hash and
+    // the daemon rejects it, wasting the commitment fee. Fail closed here rather
+    // than committing a referral this SDK cannot honor.
+    if (!isVRSCParent(parentIAddress, network)) {
+      throw new TransactionBuildError(
+        'referrals are not supported for sub-ID (non-VRSC-parent) registrations in this SDK; ' +
+          'omit the referral for a sub-ID name commitment.',
+      );
+    }
   }
   const referralHash = referralIAddress
     ? iAddressToHash(referralIAddress)

@@ -272,6 +272,17 @@ describe('identity', () => {
       expect(result.identityAddress).toMatch(/^i/);
     });
 
+    it('rejects a referral on a sub-ID (non-VRSC-parent) commitment', () => {
+      // The referral would be committed into the advanced reservation hash, but
+      // the sub-ID registration path emits no referral payout — the daemon would
+      // reject the mismatch. Fail closed at commitment.
+      const referral = deriveIdentityAddress('subrefr', SYSTEM_ID);
+      const parent = deriveIdentityAddress('subpar', SYSTEM_ID);
+      expect(() =>
+        prepareNameCommitment('subx', TEST_ADDR, referral, parent, 'testnet'),
+      ).toThrow(/not supported for sub-ID/);
+    });
+
     it('rejects an R-address referral (would be laundered into a bogus identity)', () => {
       // A referral must be an i-address; iAddressToHash discards the version byte,
       // so an R-address silently becomes a hash naming no identity and the daemon
