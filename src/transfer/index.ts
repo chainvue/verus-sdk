@@ -10,13 +10,13 @@
  * - Simple P2PKH build+sign
  */
 
-import { smarttxs, TransactionBuilder, Transaction } from '@bitgo/utxo-lib';
+import { smarttxs, TransactionBuilder, Transaction } from '../fork/boundary.js';
 import {
   TransferDestination,
   DEST_PKH,
   DEST_ID,
   DEST_ETH,
-} from 'verus-typescript-primitives';
+} from '../fork/boundary.js';
 import BN from 'bn.js';
 import bs58check from 'bs58check';
 import { NETWORK_CONFIG, VERSION_GROUP_ID, PUBKEY_HASH_PREFIX, I_ADDR_VERSION } from '../constants/index.js';
@@ -28,7 +28,7 @@ import { parseIAddress, parseAddress as parseBrandAddress } from '../core/brands
 import { addressToScriptPubKey, toSafeNumber } from '../utils/index.js';
 import { InsufficientFundsError, InvalidAddressError, InvalidWifError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
-import type { TransferDestination as TransferDestinationType } from 'verus-typescript-primitives';
+import type { TransferDestination as TransferDestinationType } from '../fork/boundary.js';
 import type {
   Utxo,
   SendCurrencyParams,

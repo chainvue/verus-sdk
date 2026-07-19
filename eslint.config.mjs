@@ -49,6 +49,26 @@ export default tseslint.config(
       "no-console": "off",
     },
   },
+  {
+    // Fork containment: only src/fork/ may import the raw forks. Everywhere else
+    // in src/ must go through src/fork/boundary.ts. A new direct import here is a
+    // lint failure, not a hazard that spreads. (Tests may import the fork freely.)
+    files: ["src/**/*.ts"],
+    // src/fork/ IS the boundary; ambient .d.ts files declare the fork's own types
+    // and must reference them.
+    ignores: ["src/fork/**", "**/*.d.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            { name: "@bitgo/utxo-lib", message: "Import the fork only via src/fork/boundary.ts." },
+            { name: "verus-typescript-primitives", message: "Import the fork only via src/fork/boundary.ts." },
+          ],
+        },
+      ],
+    },
+  },
   ...tseslint.configs.recommended.map((config) => ({
     ...config,
     files: ["*.config.ts"],

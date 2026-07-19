@@ -13,7 +13,7 @@ import {
   TransactionBuilder,
   networks,
   smarttxs,
-} from '@bitgo/utxo-lib';
+} from '../fork/boundary.js';
 import type { Utxo } from '../types/index.js';
 import { VERSION_GROUP_ID } from '../constants/index.js';
 import { toSafeNumber } from '../utils/index.js';

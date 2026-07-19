@@ -14,8 +14,8 @@
 export { classifyCurrency, CURRENCY_TYPE_ORDER } from './classify.js';
 export type { CurrencyType } from './classify.js';
 
-import { TransactionBuilder, Transaction, smarttxs } from '@bitgo/utxo-lib';
-import { Identity, IdentityScript } from 'verus-typescript-primitives';
+import { TransactionBuilder, Transaction, smarttxs } from '../fork/boundary.js';
+import { Identity, IdentityScript } from '../fork/boundary.js';
 import BN from 'bn.js';
 import { NETWORK_CONFIG, VERSION_GROUP_ID, IDENTITY_FLAG_ACTIVECURRENCY } from '../constants/index.js';
 import type { Network } from '../constants/index.js';

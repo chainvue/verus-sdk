@@ -124,7 +124,17 @@ until Phase 0's differential harness makes it safely verifiable.
   - [ ] remaining chokepoints: `addressToScriptPubKey` (utils), `validateUpdateAddressParams`,
         the `prepareNameCommitment`/`deriveIdentityAddress` referral+parent guards, and the
         `transfer` address path → then delete the last `assertAddressVersion` sites.
-- [ ] Phase 2 · [ ] Phase 3 · [ ] Phase 4 · [ ] Phase 5
+- [~] **Phase 2 — Fork containment** (in progress)
+  - [x] 2a: `src/fork/boundary.ts` (single re-export of both forks); all six src
+        modules migrated to import from it; ESLint `no-restricted-imports` fence
+        forbids the raw forks outside `src/fork/`. Behavior-identical (goldens
+        unchanged). primitives is the source of truth for shared CC types;
+        utxo-lib's own tx/crypto surface is re-exported explicitly.
+  - [ ] 2b: merge the two `.d.ts` (`src/types/bitgo-utxo-lib.d.ts` +
+        `src/fork-shims.d.ts`) into one source of truth + generate the consumer
+        shim from it in `finalize-types.mjs`; move `toSafeNumber` crossing +
+        fork-error wrapping into the boundary.
+- [ ] Phase 3 · [ ] Phase 4 · [ ] Phase 5
 
 **Coverage gaps to add fixtures for later:** update/revoke/recover, defineCurrency, sendCurrency
 daemon shapes (only sub-ID + VRSC-reg pinned so far).
