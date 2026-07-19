@@ -109,15 +109,15 @@ describe('identity', () => {
     it('should produce a non-empty script for standard reservation', () => {
       const reservation = Buffer.from('test');
       const iAddr = deriveIdentityAddress('testid', SYSTEM_ID);
-      const script = buildReservationScript(iAddr, reservation, false);
+      const script = buildReservationScript(parseIAddress(iAddr), reservation, false);
       expect(script.length).toBeGreaterThan(0);
     });
 
     it('should produce a different script for advanced reservation', () => {
       const reservation = Buffer.from('test');
       const iAddr = deriveIdentityAddress('testid', SYSTEM_ID);
-      const stdScript = buildReservationScript(iAddr, reservation, false);
-      const advScript = buildReservationScript(iAddr, reservation, true);
+      const stdScript = buildReservationScript(parseIAddress(iAddr), reservation, false);
+      const advScript = buildReservationScript(parseIAddress(iAddr), reservation, true);
       expect(stdScript.equals(advScript)).toBe(false);
     });
   });
