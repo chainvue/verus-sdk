@@ -50,9 +50,14 @@ export interface TxIntent {
   hasSmartOutputs?: boolean;
   /** Extra bytes for fee sizing when a pre-built output dwarfs the fixed estimate. */
   extraOutputBytes?: number;
-  /** `estimate` sizes the fee from the tx; `declared` names an intentional fee
-   *  (e.g. a registration burn), which also bounds the signing-time fee-rate cap. */
-  fee: { policy: 'estimate' } | { policy: 'declared'; totalSat: bigint };
+  /** Output count fed to the fee estimator; defaults to the declared outputs.
+   *  Override only to reproduce a legacy per-path estimate byte-for-byte. */
+  feeOutputCount?: number;
+  /** `estimate` sizes the fee from the tx. `declared` names an intentional
+   *  implicit burn — native that leaves BEYOND the outputs and the miner fee
+   *  (e.g. the registration fee): it is added to the funding requirement and
+   *  bounds the signing-time fee-rate cap, so it can never be an accident. */
+  fee: { policy: 'estimate' } | { policy: 'declared'; burnSat: bigint; reason: string };
   /** Label used in conservation error messages. */
   label: string;
 }
@@ -73,7 +78,10 @@ export function assembleAndSign(intent: TxIntent): AssembledTx {
 
   // Funding requirements are DERIVED from the declared outputs — never restated
   // by the caller (the token-burn class came from a path building these by hand).
-  let requiredNative = 0n;
+  // A declared implicit burn (registration fee) is native that must be funded
+  // but leaves as fee rather than to an output, so it adds to the native need.
+  const burnSat = intent.fee.policy === 'declared' ? intent.fee.burnSat : 0n;
+  let requiredNative = burnSat;
   const requiredCurrencies = new Map<string, bigint>();
   for (const o of intent.outputs) {
     requiredNative += o.nativeSat;
@@ -86,7 +94,7 @@ export function assembleAndSign(intent: TxIntent): AssembledTx {
     intent.funding,
     requiredNative,
     requiredCurrencies,
-    intent.outputs.length,
+    intent.feeOutputCount ?? intent.outputs.length,
     systemId,
     undefined,
     intent.hasSmartOutputs ?? true,
@@ -134,12 +142,15 @@ export function assembleAndSign(intent: TxIntent): AssembledTx {
 
   // Conservation postconditions on the assembled transaction.
   assertTokenConservation(selection.selected, requiredCurrencies, selection.currencyChanges, systemId, intent.label);
+  // The native fee that must leave = the miner fee + any declared burn + the
+  // leading inputs' native (they carry value but fund no output of their own).
   const leadingNative = leading.reduce((sum, u) => sum + u.satoshis, 0n);
-  const expectedFee =
-    intent.fee.policy === 'declared' ? intent.fee.totalSat : selection.fee + leadingNative;
+  const expectedFee = selection.fee + burnSat + leadingNative;
   assertNativeConservation(allUtxos, unsignedTx.outs, expectedFee, intent.label);
 
-  const maxFeeSats = intent.fee.policy === 'declared' ? intent.fee.totalSat : undefined;
+  // A declared burn tells the fork's absurd-fee-rate cap the intended absolute
+  // fee, or build() rejects the (legitimately large) registration burn.
+  const maxFeeSats = intent.fee.policy === 'declared' ? expectedFee : undefined;
   const { signedTx, txid } = signTransactionSmart(unsignedTx.toHex(), intent.wif, allUtxos, verusNetwork, maxFeeSats);
 
   return {
