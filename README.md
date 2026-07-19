@@ -66,6 +66,7 @@ Per-area guides, plus runnable offline examples in [`examples/`](./examples):
 | [transfers](./docs/transfers.md) | `transfer` / `transferToken` / `convert` / `sendCurrency`, UTXOs, change, re-validation |
 | [VerusID lifecycle](./docs/identity.md) | commit → register, update, lock/unlock, revoke/recover, sign/verify messages |
 | [signing & wire format](./docs/signing-and-wire.md) | why the bytes are the daemon's, the self-contained bundle, the proof rings |
+| [architecture](./docs/architecture.md) | the fork boundary, the two assemblers, what's unrepresentable vs checked, the differential harness |
 | [testing](./docs/testing.md) | the gate, the plain-`node` rule, the live-proof ring model |
 
 ## Contributing
