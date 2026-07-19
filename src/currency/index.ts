@@ -23,6 +23,7 @@ import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeCons
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
 import { toSafeNumber } from '../utils/index.js';
 import { identityPaymentScript, assertWifIsPrimary } from '../identity/index.js';
+import { parseIAddress } from '../core/brands.js';
 import { validateWif } from '../keys/index.js';
 import { TransactionBuildError, InvalidWifError } from '../errors.js';
 import type { Utxo, DefineCurrencyParams, DefineCurrencyResult } from '../types/index.js';
@@ -122,7 +123,7 @@ export function defineCurrency(
 
   if (selection.nativeChange > 0n) {
     if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }

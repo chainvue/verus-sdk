@@ -21,6 +21,7 @@ import {
   buildTokenChangeOutput,
 } from '../src/identity/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
+import { parseIAddress } from '../src/core/brands.js';
 import { getNetwork } from '../src/signing/index.js';
 import { NETWORK_CONFIG, DEFAULT_REGISTRATION_FEE } from '../src/constants/index.js';
 
@@ -127,14 +128,14 @@ describe('identity', () => {
       const script = buildP2IDScript(iAddr);
       // A Verus P2ID is a CryptoCondition (OptCCParams) output, not the bare
       // 26-byte OP_DUP...OP_CHECKCRYPTOCONDITION template it used to emit.
-      expect(script.equals(identityPaymentScript(iAddr))).toBe(true);
+      expect(script.equals(identityPaymentScript(parseIAddress(iAddr)))).toBe(true);
     });
   });
 
   describe('buildReferralPaymentScript', () => {
     it('should produce a non-empty CC script', () => {
       const iAddr = deriveIdentityAddress('referrer', SYSTEM_ID);
-      const script = buildReferralPaymentScript(iAddr);
+      const script = buildReferralPaymentScript(parseIAddress(iAddr));
       expect(script.length).toBeGreaterThan(0);
     });
   });

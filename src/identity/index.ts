@@ -40,6 +40,7 @@ import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
+import { parseIAddress, type IAddress } from '../core/brands.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
 import type {
@@ -381,7 +382,7 @@ export function prepareNameCommitment(
  * as identity-spendable. It now delegates to the chain-verified CC builder.
  */
 export function buildP2IDScript(iAddress: string): Buffer {
-  return identityPaymentScript(iAddress);
+  return identityPaymentScript(parseIAddress(iAddress, 'iAddress'));
 }
 
 /**
@@ -390,14 +391,16 @@ export function buildP2IDScript(iAddress: string): Buffer {
  * an identity (verified against on-chain P2ID outputs). Use this for change
  * or payment outputs to an i-address.
  */
-export function identityPaymentScript(iAddress: string): Buffer {
+export function identityPaymentScript(iAddress: IAddress): Buffer {
   return buildReferralPaymentScript(iAddress);
 }
 
 /**
- * Build a CC referral payment output script
+ * Build a CC referral payment output script. Requires an already-parsed
+ * i-address: IdentityID.fromAddress launders the version byte, so accepting a
+ * raw string here is exactly the hole that let a wrong-kind address through.
  */
-export function buildReferralPaymentScript(iAddress: string): Buffer {
+export function buildReferralPaymentScript(iAddress: IAddress): Buffer {
   const identityDest = new TxDestination(IdentityID.fromAddress(iAddress));
 
   // Master: EVAL_NONE outputs have empty master (no index destinations)
@@ -675,7 +678,7 @@ export function buildAndSignCommitment(
       // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
       // changeAddress needs the explicit P2ID script (matching sendCurrency), or
       // it throws an untyped "no matching Script".
-      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
@@ -803,7 +806,7 @@ function _buildVrscRegistration(
 
     for (const referrerAddr of chain) {
       referralOutputs.push({
-        script: buildReferralPaymentScript(referrerAddr),
+        script: buildReferralPaymentScript(parseIAddress(referrerAddr, 'referralChain entry')),
         value: fees.referralAmount,
       });
     }
@@ -872,7 +875,7 @@ function _buildVrscRegistration(
       // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
       // changeAddress needs the explicit P2ID script (matching sendCurrency), or
       // it throws an untyped "no matching Script".
-      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
@@ -1038,7 +1041,7 @@ function _buildSubIdRegistration(
     // changeAddress needs the explicit P2ID script (matching sendCurrency), or
     // it throws an untyped "no matching Script".
     if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
@@ -1288,7 +1291,7 @@ export function buildAndSignIdentityUpdate(
     // changeAddress needs the explicit P2ID script (matching sendCurrency), or
     // it throws an untyped "no matching Script".
     if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
