@@ -115,9 +115,18 @@ until Phase 0's differential harness makes it safely verifiable.
         + hermetic diff test (`test/differential.test.ts`). Current SDK output confirmed
         daemon-shaped (sub-ID fee = EVAL_RESERVE_OUTPUT/1 currency/0 native; VRSC reg =
         no reserve outputs).
-- [ ] Phase 1 · [ ] Phase 2 · [ ] Phase 3 · [ ] Phase 4 · [ ] Phase 5
+- [~] **Phase 1 — Brands** (in progress; each slice merged, behavior-identical — golden snapshots unchanged)
+  - [x] 1.1 `src/core/brands.ts` (RAddress/IAddress/P2shAddress + parsers) — PR #42
+  - [x] 1.2 `identityPaymentScript` / `buildReferralPaymentScript` → `IAddress` (closed the review's hole) — PR #42
+  - [x] 1.3 `createIdentityObject` → brands, **5 assertAddressVersion deleted** — PR #43
+  - [x] 1.4 `buildCommitmentScript` → `RAddress` — PR #44
+  - [x] 1.5 `buildTokenChangeOutput` → `Address` (dropped hand-rolled version dispatch) — PR #45
+  - [ ] remaining chokepoints: `addressToScriptPubKey` (utils), `validateUpdateAddressParams`,
+        the `prepareNameCommitment`/`deriveIdentityAddress` referral+parent guards, and the
+        `transfer` address path → then delete the last `assertAddressVersion` sites.
+- [ ] Phase 2 · [ ] Phase 3 · [ ] Phase 4 · [ ] Phase 5
 
-**Next:** Phase 1 (brands). Coverage gaps to add fixtures for later: update/revoke/recover,
-defineCurrency, sendCurrency daemon shapes (only sub-ID + VRSC-reg pinned so far).
+**Coverage gaps to add fixtures for later:** update/revoke/recover, defineCurrency, sendCurrency
+daemon shapes (only sub-ID + VRSC-reg pinned so far).
 
 Update this section as phases land.
