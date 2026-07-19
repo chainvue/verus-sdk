@@ -169,10 +169,10 @@ export function assembleAndSign(intent: TxIntent): AssembledTx {
     txb.addOutput(o.script, toSafeNumber(o.nativeSat));
   }
 
-  // Change, emitted in one place. A token-dropping transaction is
-  // unrepresentable — the assembler either emits the reserve-output change or the
-  // conservation check below throws. utxo-lib's addOutput only resolves base58
-  // R-addresses, so an i-address change needs the explicit P2ID script.
+  // Change, emitted in one place — bundled onto the reserve output or as a
+  // separate native output (per changeStrategy). utxo-lib's addOutput only
+  // resolves base58 R-addresses, so an i-address change needs the explicit P2ID
+  // script.
   const hasTokenChange = selection.currencyChanges.size > 0;
   const emitNativeChange = (value: bigint): void => {
     if (intent.changeAddress.startsWith('i')) {
@@ -202,9 +202,19 @@ export function assembleAndSign(intent: TxIntent): AssembledTx {
   const unsignedTx = txb.buildIncomplete();
 
   // Conservation postconditions on the assembled transaction.
+  //
+  // The token check is a CONSISTENCY check, not an independent audit:
+  // selection.currencyChanges was computed by selectUtxos as (inputs −
+  // requiredCurrencies), so `inputs == requiredCurrencies + change` holds by
+  // construction. It catches a re-decode disagreement between the two calls, or a
+  // `requiredCurrencies` override (sendCurrency) that doesn't match the funded
+  // token value — NOT a per-currency semantic error. For currency transfers, the
+  // semantic audit (conversion, export, fee-currency accounting) is
+  // validateFundedTransaction, which sendCurrency runs on the signed hex.
   assertTokenConservation(selection.selected, requiredCurrencies, selection.currencyChanges, systemId, intent.label);
-  // The native fee that must leave = the miner fee + any declared burn + the
-  // leading inputs' native (they carry value but fund no output of their own).
+  // The native check IS an independent audit: inputs − outputs must equal the
+  // intended fee = miner fee + any declared burn. Leading inputs are guarded to 0
+  // native above, so their term is 0; it stays explicit as honest accounting.
   const leadingNative = leading.reduce((sum, u) => sum + u.satoshis, 0n);
   const expectedFee = selection.fee + burnSat + leadingNative;
   assertNativeConservation(allUtxos, unsignedTx.outs, expectedFee, intent.label);
