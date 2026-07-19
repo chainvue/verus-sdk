@@ -53,6 +53,16 @@ export interface TxIntent {
   /** Output count fed to the fee estimator; defaults to the declared outputs.
    *  Override only to reproduce a legacy per-path estimate byte-for-byte. */
   feeOutputCount?: number;
+  /** Token funding requirement, when the outputs are pre-built by the fork
+   *  (createUnfundedCurrencyTransfer) and their carried token value can't be read
+   *  back off the opaque scripts. When set, it REPLACES the per-output `carries`
+   *  derivation. Drives both selection and the token-conservation check. */
+  requiredCurrencies?: Map<string, bigint>;
+  /** How change is emitted. `bundled` (default) rides the native change on the
+   *  token-change reserve output (the identity/registration convention). `separate`
+   *  emits the token change with only its structural native value plus a distinct
+   *  native-change output (the fork's currency-transfer convention). */
+  changeStrategy?: 'bundled' | 'separate';
   /** `estimate` sizes the fee from the tx. `declared` names an intentional
    *  implicit burn — native that leaves BEYOND the outputs and the miner fee
    *  (e.g. the registration fee): it is added to the funding requirement and
@@ -82,10 +92,12 @@ export function assembleAndSign(intent: TxIntent): AssembledTx {
   // but leaves as fee rather than to an output, so it adds to the native need.
   const burnSat = intent.fee.policy === 'declared' ? intent.fee.burnSat : 0n;
   let requiredNative = burnSat;
-  const requiredCurrencies = new Map<string, bigint>();
+  // Token requirement: an explicit override (fork-built outputs) replaces the
+  // per-output carries; otherwise it is summed from the outputs' declared carries.
+  const requiredCurrencies = new Map<string, bigint>(intent.requiredCurrencies ?? []);
   for (const o of intent.outputs) {
     requiredNative += o.nativeSat;
-    if (o.carries) {
+    if (!intent.requiredCurrencies && o.carries) {
       for (const [c, v] of o.carries) requiredCurrencies.set(c, (requiredCurrencies.get(c) ?? 0n) + v);
     }
   }
@@ -121,20 +133,33 @@ export function assembleAndSign(intent: TxIntent): AssembledTx {
     txb.addOutput(o.script, toSafeNumber(o.nativeSat));
   }
 
-  // Change: token change (with native piggyback) or plain native, emitted in one
-  // place. A token-dropping transaction is unrepresentable — the assembler either
-  // emits the reserve-output change or the conservation check below throws.
+  // Change, emitted in one place. A token-dropping transaction is
+  // unrepresentable — the assembler either emits the reserve-output change or the
+  // conservation check below throws. utxo-lib's addOutput only resolves base58
+  // R-addresses, so an i-address change needs the explicit P2ID script.
   const hasTokenChange = selection.currencyChanges.size > 0;
-  if (hasTokenChange || selection.nativeChange > 0n) {
+  const emitNativeChange = (value: bigint): void => {
+    if (intent.changeAddress.startsWith('i')) {
+      txb.addOutput(identityPaymentScript(parseIAddress(intent.changeAddress, 'changeAddress')), toSafeNumber(value));
+    } else {
+      txb.addOutput(intent.changeAddress, toSafeNumber(value));
+    }
+  };
+  if ((intent.changeStrategy ?? 'bundled') === 'separate') {
+    // Token change carries only its own structural native value; the native change
+    // is a distinct output (the fork's currency-transfer convention).
+    if (hasTokenChange) {
+      const tokenChange = buildTokenChangeOutput(parseAddress(intent.changeAddress, 'changeAddress'), selection.currencyChanges);
+      txb.addOutput(tokenChange.script, toSafeNumber(tokenChange.nativeValue));
+    }
+    if (selection.nativeChange > 0n) emitNativeChange(selection.nativeChange);
+  } else if (hasTokenChange || selection.nativeChange > 0n) {
+    // Bundled: the native change rides on the token-change reserve output.
     if (hasTokenChange) {
       const tokenChange = buildTokenChangeOutput(parseAddress(intent.changeAddress, 'changeAddress'), selection.currencyChanges);
       txb.addOutput(tokenChange.script, toSafeNumber(selection.nativeChange));
-    } else if (intent.changeAddress.startsWith('i')) {
-      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address needs
-      // the explicit P2ID script or it throws an untyped "no matching Script".
-      txb.addOutput(identityPaymentScript(parseIAddress(intent.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
-      txb.addOutput(intent.changeAddress, toSafeNumber(selection.nativeChange));
+      emitNativeChange(selection.nativeChange);
     }
   }
 
