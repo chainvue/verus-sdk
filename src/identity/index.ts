@@ -26,13 +26,13 @@ import {
   RESERVE_TRANSFER_VALID,
   RESERVE_TRANSFER_BURN_CHANGE_PRICE,
   DEST_ID,
-} from 'verus-typescript-primitives';
-import { EVALS } from 'verus-typescript-primitives';
+} from '../fork/boundary.js';
+import { EVALS } from '../fork/boundary.js';
 import {
   nameAndParentAddrToIAddr,
   fromBase58Check,
-} from 'verus-typescript-primitives';
-import { TransactionBuilder, Transaction, smarttxs, ECPair } from '@bitgo/utxo-lib';
+} from '../fork/boundary.js';
+import { TransactionBuilder, Transaction, smarttxs, ECPair } from '../fork/boundary.js';
 import {
   NETWORK_CONFIG,
   VERSION_GROUP_ID,

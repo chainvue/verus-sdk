@@ -6,7 +6,7 @@
  * - Data attestation
  */
 
-import { ECPair, IdentitySignature, networks } from '@bitgo/utxo-lib';
+import { ECPair, IdentitySignature, networks } from '../fork/boundary.js';
 import { NETWORK_CONFIG, HASH_SHA256, I_ADDR_VERSION } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { assertAddressVersion } from '../identity/index.js';

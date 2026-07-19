@@ -4,7 +4,7 @@
 
 import { createHash } from 'crypto';
 import bs58check from 'bs58check';
-import { fromBase58Check } from 'verus-typescript-primitives';
+import { fromBase58Check } from '../fork/boundary.js';
 import { NETWORK_CONFIG } from '../constants/index.js';
 import { InvalidAddressError, InvalidAmountError } from '../errors.js';
 
