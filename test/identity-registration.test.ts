@@ -25,6 +25,8 @@ import type { CommitmentData, Utxo } from '../src/types/index.js';
 // Valid testnet WIF (for offline signing — no funds needed)
 const TEST_WIF = 'UusoQWsobQKUkezgBJa22D9G4t9Avo6k8wD5UUxmmfAEoTN8bawc';
 const TEST_ADDRESS = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';
+// A different valid WIF (controls RPsQD..., not TEST_ADDRESS).
+const TEST_WIF_B = 'UtJXdBipt7XKxSe3AKFYhXizA5cgCM1ztQLVDANwHtfERydFEnPG';
 const NETWORK = 'testnet' as const;
 const SYSTEM_ID = NETWORK_CONFIG.testnet.chainId;
 
@@ -86,6 +88,27 @@ function createMockRegistrationInputs(
 // ─── Tests ────────────────────────────────────────────
 
 describe('buildAndSignRegistration', () => {
+  it('rejects a WIF that does not control the name-commitment output', () => {
+    // Commitment controlled by TEST_ADDRESS; signing step 2 with TEST_WIF_B
+    // (a different key) would spend an input it cannot unlock — the daemon
+    // rejects it at broadcast and the commitment fee is wasted.
+    const { commitmentData, commitmentUtxo, fundingUtxos } = createMockRegistrationInputs('wrongwif');
+    expect(() =>
+      buildAndSignRegistration(
+        {
+          wif: TEST_WIF_B,
+          commitmentUtxo,
+          commitmentData,
+          primaryAddresses: [TEST_ADDRESS],
+          utxos: fundingUtxos,
+          changeAddress: TEST_ADDRESS,
+          expiryHeight: 0,
+        },
+        NETWORK,
+      ),
+    ).toThrow(/does not control the name-commitment/);
+  });
+
   // ─── Test 1: No referral ───────────────────────────
 
   it('should register without referral (2 outputs + change)', () => {
