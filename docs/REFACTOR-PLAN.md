@@ -156,7 +156,26 @@ until Phase 0's differential harness makes it safely verifiable.
   - Not yet done (optional follow-ups): the boundary hasn't grown bigint-accepting
     wrappers (`addOutputSats`/`forkCall`); the assembler still calls `toSafeNumber` at
     each `addOutput`. Cheap to add later, no behavior change.
-- [ ] Phase 4 · [ ] Phase 5
+- [x] **Phase 4 — Public-surface hygiene** (two breaking `feat!`)
+  - [x] 4.1 dropped the dead number-money types (CurrencyBalance, Transaction,
+        TransactionDirection, VerusIdentity, ConversionQuote) — PR #71
+  - [x] 4.2 curated the `identity` power-user namespace via `src/identity/public.ts`
+        (8 intentional exports; the ~15 internal builders left the public surface but
+        stay module-exported for cross-file use); `transfer`/`currency` already clean — PR #72
+  - Deliberately NOT done: exporting the brands+parsers (the facade takes strings; the
+    lean public surface is intentional).
+- [x] **Phase 5 — Live differential + docs**
+  - [x] `docs/architecture.md` — the fork-boundary contract, the two assemblers, the
+        unrepresentability table, and the Tier-0/Tier-1 differential strategy; linked from README.
+  - [x] `scripts/live-differential.mjs` — the Tier-1 runner: reduces an SDK hex and a
+        daemon `returntx` hex each to their structural (CC/reserve) output multiset and
+        diffs them. Verified positive (sub-ID vs sub-ID) and negative (sub-ID vs VRSC-reg
+        → correctly fails on the reserve-output difference).
+  - Note: the private RISKS.md "hand-rolled selectUtxos" WATCH item is addressed by the
+    Phase-3 relocation (selection now lives inside the two assemblers, not per-path); the
+    private doc update is the maintainer's. Recording Tier-0 fixtures for the remaining
+    flows (update/revoke/recover, defineCurrency, sendCurrency) via the runner remains an
+    open coverage item — the mechanism is now in place.
 
 Phase 3 note (follow-up): the boundary should grow bigint-accepting wrappers (e.g.
 `addOutputSats(txb, script, sats)` doing `toSafeNumber` internally, `forkCall(fn)`
