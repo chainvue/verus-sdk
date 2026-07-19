@@ -19,6 +19,7 @@ import {
   deriveIdentityAddress,
   buildTokenChangeOutput,
 } from '../src/identity/index.js';
+import { sendCurrency } from '../src/transfer/index.js';
 import { defineCurrency } from '../src/currency/index.js';
 import { parseAddress } from '../src/core/brands.js';
 import type { CommitmentData, Utxo } from '../src/types/index.js';
@@ -155,6 +156,41 @@ describe('golden signed-tx bytes (Phase-0 behavior lock)', () => {
         identityUtxo: mock.identityUtxo,
         currencyDefScript: MOCK_CURRENCY_DEF_SCRIPT,
         utxos: [makeFundingUtxo('aa', 100_000_000n)],
+        changeAddress: TEST_ADDRESS,
+        expiryHeight: 0,
+      },
+      NETWORK,
+    );
+    expect(r.signedTx).toMatchSnapshot();
+  });
+
+  it('sendCurrency (native transfer, native change)', () => {
+    const r = sendCurrency(
+      {
+        wif: TEST_WIF,
+        outputs: [{ currency: VRSCTEST_SYSTEM_ID, satoshis: 50_000_000n, address: TEST_ADDRESS_B, addressType: 'PKH' }],
+        utxos: [makeFundingUtxo('aa', 100_000_000n)],
+        changeAddress: TEST_ADDRESS,
+        expiryHeight: 0,
+      },
+      NETWORK,
+    );
+    expect(r.signedTx).toMatchSnapshot();
+  });
+
+  it('sendCurrency (token transfer, token + native change)', () => {
+    const token = deriveIdentityAddress('goldsendtoken', VRSCTEST_SYSTEM_ID);
+    // One token-bearing reserve UTXO (funds the transfer + token change) and one
+    // native UTXO (covers the reserve-transfer native + miner fee).
+    const tokenScript = buildTokenChangeOutput(parseAddress(TEST_ADDRESS), new Map([[token, 100_000_000n]])).script;
+    const r = sendCurrency(
+      {
+        wif: TEST_WIF,
+        outputs: [{ currency: token, satoshis: 40_000_000n, address: TEST_ADDRESS_B, addressType: 'PKH' }],
+        utxos: [
+          { txid: 'cc'.repeat(32), outputIndex: 0, satoshis: 0n, script: tokenScript.toString('hex') },
+          makeFundingUtxo('aa', 100_000_000n),
+        ],
         changeAddress: TEST_ADDRESS,
         expiryHeight: 0,
       },

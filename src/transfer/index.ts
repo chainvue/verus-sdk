@@ -21,10 +21,8 @@ import BN from 'bn.js';
 import bs58check from 'bs58check';
 import { NETWORK_CONFIG, VERSION_GROUP_ID, PUBKEY_HASH_PREFIX, I_ADDR_VERSION } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { signTransactionSmart, getNetwork, validateFundedTransaction, resolveExpiryHeight, assertNativeConservation } from '../signing/index.js';
-import { selectUtxos } from '../utxo/index.js';
-import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
-import { parseIAddress, parseAddress as parseBrandAddress } from '../core/brands.js';
+import { signTransactionSmart, getNetwork, validateFundedTransaction, resolveExpiryHeight } from '../signing/index.js';
+import { assembleAndSign } from '../assemble/assembler.js';
 import { addressToScriptPubKey, toSafeNumber } from '../utils/index.js';
 import { InsufficientFundsError, InvalidAddressError, InvalidWifError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
@@ -185,10 +183,6 @@ export function sendCurrency(
   );
 
   const unfundedTx = Transaction.fromHex(unfundedTxHex, verusNetwork);
-  let requiredNative = 0n;
-  for (const out of unfundedTx.outs) {
-    requiredNative += BigInt(out.value);
-  }
 
   const hasSmartOutputs = params.outputs.some(
     (o) => o.convertTo || o.exportTo || o.via || o.currency !== systemId
@@ -213,66 +207,24 @@ export function sendCurrency(
     }
   }
 
-  const selection = selectUtxos(
-    params.utxos,
-    requiredNative,
-    requiredCurrencies,
-    unfundedTx.outs.length,
-    systemId,
-    undefined,
+  // The fork built the output scripts (createUnfundedCurrencyTransfer); the
+  // assembler funds them (native summed from the outputs, tokens from the
+  // explicit requiredCurrencies since the opaque scripts can't be read back),
+  // emits change the fork's way (a token-change output plus a distinct native
+  // one), and enforces native + token conservation.
+  const assembled = assembleAndSign({
+    network,
+    wif: params.wif,
+    expiryHeight: params.expiryHeight,
+    funding: params.utxos,
+    outputs: unfundedTx.outs.map((o) => ({ script: o.script, nativeSat: BigInt(o.value) })),
+    changeAddress: params.changeAddress,
     hasSmartOutputs,
-  );
-
-  const txb = new TransactionBuilder(verusNetwork);
-  txb.setVersion(4);
-  txb.setExpiryHeight(expiryHeight);
-  txb.setVersionGroupId(VERSION_GROUP_ID);
-
-  for (const utxo of selection.selected) {
-    txb.addInput(
-      Buffer.from(utxo.txid, 'hex').reverse(),
-      utxo.outputIndex,
-      0xffffffff,
-      Buffer.from(utxo.script, 'hex'),
-    );
-  }
-
-  for (const out of unfundedTx.outs) {
-    txb.addOutput(out.script, out.value);
-  }
-
-  if (selection.currencyChanges.size > 0) {
-    const tokenChange = buildTokenChangeOutput(
-      parseBrandAddress(params.changeAddress, 'changeAddress'),
-      selection.currencyChanges,
-    );
-    txb.addOutput(tokenChange.script, toSafeNumber(tokenChange.nativeValue));
-  }
-
-  if (selection.nativeChange > 0n) {
-    // utxo-lib's addOutput only resolves base58 R-addresses; identity
-    // change (an i-address changeAddress) needs the explicit P2ID script —
-    // byte-identical to the chain's own pay-to-identity outputs.
-    if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
-    } else {
-      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
-    }
-  }
-
-  const unsignedTx = txb.buildIncomplete();
-  // Independent native value conservation: assembled native fee (inputs minus
-  // outputs) must equal the intended selection fee. validateFundedTransaction
-  // below reports fees but never bounds them, and the fork's absurd-fee guard is
-  // blind for inputs > 2^32 sats — so this bigint check is the only enforced
-  // backstop against a change-accounting slip silently burning native value.
-  assertNativeConservation(selection.selected, unsignedTx.outs, selection.fee, 'sendCurrency');
-  const { signedTx, txid } = signTransactionSmart(
-    unsignedTx.toHex(),
-    params.wif,
-    selection.selected,
-    verusNetwork,
-  );
+    requiredCurrencies,
+    changeStrategy: 'separate',
+    fee: { policy: 'estimate' },
+    label: 'sendCurrency',
+  });
 
   // Defense in depth: utxo-lib's own funded-transfer validator re-checks the
   // assembled tx against the unfunded intent (value conservation per
@@ -280,11 +232,11 @@ export function sendCurrency(
   // selection/change bug here means money — refuse to hand out the hex.
   const validation = validateFundedTransaction(
     systemId,
-    signedTx,
+    assembled.signedTx,
     unfundedTxHex,
     params.changeAddress,
     verusNetwork,
-    selection.selected,
+    assembled.selected,
   );
   if (!validation.valid) {
     throw new TransactionBuildError(
@@ -293,11 +245,11 @@ export function sendCurrency(
   }
 
   return {
-    signedTx,
-    txid,
-    fee: selection.fee,
-    inputsUsed: selection.selected.length,
-    nativeChange: selection.nativeChange,
+    signedTx: assembled.signedTx,
+    txid: assembled.txid,
+    fee: assembled.fee,
+    inputsUsed: assembled.inputsUsed,
+    nativeChange: assembled.nativeChange,
   };
 }
 
