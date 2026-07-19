@@ -38,6 +38,27 @@ function twoOfTwoHex(name: string): string {
   }).toBuffer().toString('hex');
 }
 
+/** A 2-of-2 identity whose recovery authority is a DIFFERENT identity, so the
+ *  recover path is not gated by the self-authority min_sigs>1 guard. */
+function twoOfTwoRecoverable(name: string) {
+  const iaddr = deriveIdentityAddress(name, VRSCTEST_SYSTEM_ID);
+  const otherRec = deriveIdentityAddress(name + 'rec', VRSCTEST_SYSTEM_ID);
+  const id = createIdentityObject({
+    name,
+    primaryAddresses: [parseRAddress(TEST_ADDRESS), parseRAddress(TEST_ADDRESS_B)],
+    minSigs: 2,
+    revocationAuthority: parseIAddress(iaddr),
+    recoveryAuthority: parseIAddress(otherRec),
+    parentIAddress: parseIAddress(VRSCTEST_SYSTEM_ID),
+    systemId: parseIAddress(VRSCTEST_SYSTEM_ID),
+  });
+  const script = IdentityScript.fromIdentity(id).toBuffer();
+  return {
+    identityHex: id.toBuffer().toString('hex'),
+    identityUtxo: { txid: 'ff'.repeat(32), outputIndex: 0, satoshis: 0n, script: script.toString('hex') },
+  };
+}
+
 const SYSTEM_ID = VRSCTEST_SYSTEM_ID;
 
 // ─── Helper ──────────────────────────────────────────────
@@ -70,7 +91,7 @@ describe('buildAndSignIdentityUpdate', () => {
         parentIAddress: parseIAddress(VRSCTEST_SYSTEM_ID),
         systemId: parseIAddress(VRSCTEST_SYSTEM_ID),
       });
-      id.content_map.set(keyB, Buffer.from('bbbbbbbb', 'hex'));
+      id.content_map.set(keyB, Buffer.from('bb'.repeat(32), 'hex'));
       const script = IdentityScript.fromIdentity(id).toBuffer();
       return {
         identityHex: id.toBuffer().toString('hex'),
@@ -91,7 +112,7 @@ describe('buildAndSignIdentityUpdate', () => {
           utxos: [makeFundingUtxo('aa', 100_000_000n)],
           changeAddress: TEST_ADDRESS,
           expiryHeight: 0,
-          contentMap: { [keyA]: 'aaaaaaaa' },
+          contentMap: { [keyA]: 'aa'.repeat(32) },
         },
         NETWORK,
         'update',
@@ -104,6 +125,34 @@ describe('buildAndSignIdentityUpdate', () => {
       // The new key is committed; the old key is REPLACED (would still be present if merged).
       expect(idOut).toContain(keyAHash);
       expect(idOut).not.toContain(keyBHash);
+    });
+  });
+
+  describe('boundary validation (regression)', () => {
+    it('rejects an R-address contentMap key (version laundering)', () => {
+      const params = makeUpdateParams('cmaprkey', { contentMap: { [TEST_ADDRESS]: 'ab'.repeat(32) } });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(/must be an identity i-address/);
+    });
+
+    it('rejects a contentMap value that is not exactly 32 bytes', () => {
+      const key = deriveIdentityAddress('cmshort', SYSTEM_ID);
+      const params = makeUpdateParams('cmapshort', { contentMap: { [key]: 'ab'.repeat(16) } }); // 16 bytes
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(/32-byte/);
+    });
+
+    it('recover honors minSigs (lower a 2-of-2 to one fresh key)', () => {
+      const { identityHex, identityUtxo } = twoOfTwoRecoverable('recmin');
+      const base = {
+        wif: TEST_WIF, identityHex, identityUtxo,
+        utxos: [makeFundingUtxo('aa', 100_000_000n)],
+        changeAddress: TEST_ADDRESS, expiryHeight: 0,
+        primaryAddresses: [TEST_ADDRESS],
+      };
+      // With minSigs:1 the shrink is consistent and it builds.
+      const ok = buildAndSignIdentityUpdate({ ...base, minSigs: 1 }, NETWORK, 'recover');
+      expect(ok.operation).toBe('recover');
+      // Without minSigs the stale min_sigs 2 > 1 primary — fail closed.
+      expect(() => buildAndSignIdentityUpdate(base, NETWORK, 'recover')).toThrow(/primary address/);
     });
   });
 

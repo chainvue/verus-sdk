@@ -293,6 +293,8 @@ export interface RecoverIdentityParams {
   utxos: Utxo[];
   changeAddress: string;
   primaryAddresses?: string[];
+  /** New signature threshold — required to recover e.g. a 2-of-2 identity to a single fresh key. */
+  minSigs?: number;
   revocationAuthority?: string;
   recoveryAuthority?: string;
   expiryHeight: number;
