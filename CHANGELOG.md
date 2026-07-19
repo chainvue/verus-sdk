@@ -1,5 +1,37 @@
 # Changelog
 
+# [0.10.0](https://github.com/chainvue/verus-sdk/compare/v0.9.0...v0.10.0) (2026-07-19)
+
+
+* feat!: curate the identity power-user namespace (Phase 4) ([ee50536](https://github.com/chainvue/verus-sdk/commit/ee505365c7f62df0ac9b28a13e9dc720fa1509f5))
+* feat!: drop the dead number-money domain types (Phase 4) ([877549d](https://github.com/chainvue/verus-sdk/commit/877549daef75770fc3c366b555463c74668fd848))
+
+
+### Bug Fixes
+
+* **assemble:** fail closed on a leading input carrying native value (Phase 5 hardening) ([76e3a44](https://github.com/chainvue/verus-sdk/commit/76e3a443d847d29b4b7fc760291d9de0abe6c02e)), closes [#4](https://github.com/chainvue/verus-sdk/issues/4)
+* **assemble:** fail closed on a leading input carrying token value (Phase 5 hardening) ([a0f5013](https://github.com/chainvue/verus-sdk/commit/a0f5013d077ef8929b9118f95bbdea4dbea88a62))
+* **assemble:** guard identityUtxo against token value (Phase 5 hardening) ([950a127](https://github.com/chainvue/verus-sdk/commit/950a1270779ff37e8818d5277207b28b873748b3))
+* **fork:** close the require() hole in fork containment ([9f8aa95](https://github.com/chainvue/verus-sdk/commit/9f8aa95ff288104d0bc5dd4851976f30451c9b74))
+
+
+### BREAKING CHANGES
+
+* the `identity` namespace no longer exposes the internal script
+builders / serializers / asserts (buildCommitmentScript, buildReservationScript,
+buildIdentityScript, buildP2IDScript, identityPaymentScript,
+buildReferralPaymentScript, buildRegistrationFeeOutput, buildTokenChangeOutput,
+createIdentityObject, calculateCommitmentHash, serializeCommitmentHash,
+serializeNameReservation, serializeAdvancedNameReservation, assertAddressVersion,
+assertWifIsPrimary). Use the VerusSDK facade or the curated namespace.
+
+Gate green (301 passed), goldens unchanged.
+* the CurrencyBalance, Transaction, TransactionDirection,
+VerusIdentity, and ConversionQuote type exports are removed. They were never
+populated by any SDK function; nothing that signs a transaction is affected.
+
+Gate green (301 passed), all golden snapshots unchanged (type-only change).
+
 # [0.9.0](https://github.com/chainvue/verus-sdk/compare/v0.8.0...v0.9.0) (2026-07-19)
 
 
