@@ -173,6 +173,17 @@ export function selectUtxos(
     seenOutpoints.add(outpoint);
   }
 
+  // The native currency must be requested via `requiredNative`, not as a
+  // requiredCurrencies entry keyed by systemId — Phase 1 skips systemId
+  // everywhere, so such an entry is silently dropped and the caller gets an
+  // underfunded transaction rejected at broadcast instead of a typed error here.
+  if (requiredCurrencies.has(systemId)) {
+    throw new TransactionBuildError(
+      `requiredCurrencies must not contain the native currency (systemId ${systemId}); ` +
+        `pass the native amount as requiredNative instead.`,
+    );
+  }
+
   const decoded = utxos.map((u) => decodeUtxo(u, systemId));
 
   const remaining = new Map<string, bigint>(requiredCurrencies);

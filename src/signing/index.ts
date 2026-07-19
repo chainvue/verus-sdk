@@ -97,8 +97,14 @@ export function getNetwork(testnet: boolean = false): VerusNetwork {
  * fee (~100 native) as an implicit miner fee — far above any sane rate cap —
  * so callers that KNOW their intended absolute fee pass it here. It is
  * converted into a rate bound using the unsigned hex size as a lower bound of
- * the final vsize (signatures only grow a tx), so the guard still trips if
- * the actual fee materially exceeds the declared one.
+ * the final vsize (signatures only grow a tx).
+ *
+ * WARNING — do NOT rely on this as a value-conservation backstop. The fork's
+ * `__overMaximumFees` sums input values with `x.value >>> 0`, truncating each
+ * input mod 2^32; for any input above ~42.94 VRSC (2^32 sats) the computed fee
+ * wraps and the guard is effectively blind. Every money path therefore enforces
+ * bigint conservation itself (assertNativeConservation) BEFORE calling this;
+ * this cap is only a coarse secondary sanity bound on small-input transactions.
  */
 export function signTransactionSmart(
   txHex: string,
@@ -122,6 +128,10 @@ export function signTransactionSmart(
   for (let i = 0; i < utxos.length; i++) {
     const utxo = utxos[i];
     if (!utxo) continue;
+    // Fork limitation (not fixable here): txb.sign typeforce-bounds the witness
+    // value to Bitcoin's SATOSHI_MAX (21e6 * 1e8). A single input above ~21M
+    // native coins would throw inside the fork; this is far above any realistic
+    // VRSC UTXO value, and toSafeNumber already caps at 2^53-1 before this point.
     txb.sign(i, keyPair, null, Transaction.SIGHASH_ALL, toSafeNumber(utxo.satoshis));
   }
 
@@ -166,14 +176,17 @@ export function signTransactionMultiKey(
  * Create a new TransactionBuilder for manual transaction construction
  */
 export function createTransactionBuilder(
-  network: VerusNetwork = networks.verus,
-  expiryHeight: number = 0,
+  network: VerusNetwork,
+  expiryHeight: number,
   version: number = 4,
   versionGroupId: number = VERSION_GROUP_ID
 ): InstanceType<typeof TransactionBuilder> {
   const txb = new TransactionBuilder(network);
   txb.setVersion(version);
-  txb.setExpiryHeight(expiryHeight);
+  // Route through resolveExpiryHeight so this low-level builder can't silently
+  // produce a never-expiring transaction: expiryHeight is required (0 must be an
+  // explicit opt-in), and a timestamp-sized value is rejected.
+  txb.setExpiryHeight(resolveExpiryHeight(expiryHeight));
   txb.setVersionGroupId(versionGroupId);
   return txb;
 }
@@ -191,6 +204,13 @@ export function validateFundedTransaction(
 ): {
   valid: boolean;
   message?: string;
+  // Pass-through of the fork's validateFundedCurrencyTransfer result. On success
+  // it returns per-currency in/out/change/fees/sent maps; only `valid` is
+  // load-bearing for this SDK (money conservation is enforced separately by
+  // assertNativeConservation), the rest is informational.
+  in?: Record<string, number>;
+  out?: Record<string, number>;
+  change?: Record<string, number>;
   fees?: Record<string, number>;
   sent?: Record<string, number>;
 } {

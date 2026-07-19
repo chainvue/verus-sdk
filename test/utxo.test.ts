@@ -166,6 +166,15 @@ describe('utxo', () => {
     });
   });
 
+  describe('systemId in requiredCurrencies (regression)', () => {
+    it('throws instead of silently dropping a native-currency requirement', () => {
+      const utxos = [makeUtxo(100_000_000n, 1)];
+      expect(() =>
+        selectUtxos(utxos, 0n, new Map([[SYSTEM_ID, 50_000_000n]]), 2, SYSTEM_ID),
+      ).toThrow(/must not contain the native currency/);
+    });
+  });
+
   describe('assertTokenConservation', () => {
     it('passes for native-only inputs with no token outputs', () => {
       expect(() =>

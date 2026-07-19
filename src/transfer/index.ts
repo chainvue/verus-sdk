@@ -21,7 +21,7 @@ import BN from 'bn.js';
 import bs58check from 'bs58check';
 import { NETWORK_CONFIG, VERSION_GROUP_ID, PUBKEY_HASH_PREFIX, I_ADDR_VERSION } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { signTransactionSmart, getNetwork, validateFundedTransaction, resolveExpiryHeight } from '../signing/index.js';
+import { signTransactionSmart, getNetwork, validateFundedTransaction, resolveExpiryHeight, assertNativeConservation } from '../signing/index.js';
 import { selectUtxos } from '../utxo/index.js';
 import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { parseIAddress, parseAddress as parseBrandAddress } from '../core/brands.js';
@@ -261,6 +261,12 @@ export function sendCurrency(
   }
 
   const unsignedTx = txb.buildIncomplete();
+  // Independent native value conservation: assembled native fee (inputs minus
+  // outputs) must equal the intended selection fee. validateFundedTransaction
+  // below reports fees but never bounds them, and the fork's absurd-fee guard is
+  // blind for inputs > 2^32 sats — so this bigint check is the only enforced
+  // backstop against a change-accounting slip silently burning native value.
+  assertNativeConservation(selection.selected, unsignedTx.outs, selection.fee, 'sendCurrency');
   const { signedTx, txid } = signTransactionSmart(
     unsignedTx.toHex(),
     params.wif,

@@ -21,6 +21,11 @@ import {
   Identity,
   IdentityScript,
   ContentMultiMap,
+  ReserveTransfer,
+  TransferDestination,
+  RESERVE_TRANSFER_VALID,
+  RESERVE_TRANSFER_BURN_CHANGE_PRICE,
+  DEST_ID,
 } from 'verus-typescript-primitives';
 import { EVALS } from 'verus-typescript-primitives';
 import {
@@ -35,9 +40,11 @@ import {
   DEFAULT_REFERRAL_LEVELS,
   PUBKEY_HASH_PREFIX,
   I_ADDR_VERSION,
+  RESERVE_TRANSFER_FEE,
+  RESERVE_TRANSFER_EVAL_PKH,
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
+import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber, addressToScriptPubKey } from '../utils/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
 import { parseIAddress, parseRAddress, parseAddress, isIAddress, isRAddress, type IAddress, type RAddress, type Address } from '../core/brands.js';
@@ -66,6 +73,11 @@ const NULL_ID_HASH = Buffer.alloc(HASH160_BYTE_LENGTH, 0);
 
 /** Eval code for CAdvancedNameReservation (sub-ID) */
 const EVAL_IDENTITY_ADVANCEDRESERVATION = 10;
+
+/** Consensus maximum identity unlock delay (blocks) — CIdentity::MAX_UNLOCK_DELAY, ~22 years. */
+const MAX_UNLOCK_DELAY = 11_563_200;
+/** ~1 year of blocks (1 block/min); a lock delay above this needs an explicit opt-in. */
+const LOCK_DELAY_SANITY_BLOCKS = 525_600;
 
 // ─── Script / Hash Builders ────────────────────────────────────────
 
@@ -330,6 +342,17 @@ export function prepareNameCommitment(
   // registration and the commitment fee is wasted). Require an i-address.
   if (referralIAddress) {
     assertAddressVersion(referralIAddress, I_ADDR_VERSION, 'referral');
+    // A sub-ID commitment (non-VRSC parent) would bake the referral into the
+    // advanced reservation hash, but _buildSubIdRegistration emits NO referral
+    // payout — the registration would then mismatch its own committed hash and
+    // the daemon rejects it, wasting the commitment fee. Fail closed here rather
+    // than committing a referral this SDK cannot honor.
+    if (!isVRSCParent(parentIAddress, network)) {
+      throw new TransactionBuildError(
+        'referrals are not supported for sub-ID (non-VRSC-parent) registrations in this SDK; ' +
+          'omit the referral for a sub-ID name commitment.',
+      );
+    }
   }
   const referralHash = referralIAddress
     ? iAddressToHash(referralIAddress)
@@ -488,30 +511,72 @@ export function createIdentityObject(params: {
 /**
  * Build the parent-currency registration-fee output for a sub-ID.
  *
- * The daemon pays this fee as a plain reserve output (EVAL_RESERVE_OUTPUT)
- * holding `feeAmount` of the parent currency AT the parent currency's own
- * i-address, carrying zero native value. Verified against `registeridentity`
- * on VRSCTEST and an accepted on-chain sub-ID registration: for a currency
- * with idregistrationfees=1.0 the fee output is exactly `{parent: 1.0}` at the
- * parent, 0 native, and the native cost that leaves the transaction is the
- * currency's idimportfees (the caller passes it as `nativeImportFee`).
+ * The fee-output STRUCTURE depends on the parent currency's proofprotocol,
+ * verified against accepted on-chain registrations on VRSCTEST:
+ *  - proofprotocol 2 (centralized / token, e.g. `ownora-nft`): a plain reserve
+ *    output (EVAL_RESERVE_OUTPUT) holding `feeAmount` of the parent AT the
+ *    parent's i-address, ZERO native.
+ *  - otherwise (e.g. proofprotocol 1 PBaaS/fractional, `fum`): a CReserveTransfer
+ *    (EVAL_RESERVE_TRANSFER) of `feeAmount` to the parent, carrying
+ *    RESERVE_TRANSFER_FEE (0.0002) native.
  *
- * A previous implementation built this as a CReserveTransfer to the
- * reserve-transfer eval address carrying 0.0002 native — a cross-currency
- * transfer, not a same-chain fee payment. That structure never matched the
- * daemon and was never accepted at broadcast.
+ * An offline SDK cannot read the parent's proofprotocol, so the caller passes it
+ * (`parentProofProtocol`). In both cases the native the transaction actually
+ * burns is the parent's idimportfees (`nativeImportFee`); the fee output's own
+ * native value is funded and cancels out in the conservation accounting.
  *
- * `systemId`/`_controlAddress` are retained for signature compatibility and
- * are unused: the fee is denominated in and paid to the parent currency.
+ * `_controlAddress` is retained for signature compatibility and is unused.
  */
 export function buildRegistrationFeeOutput(
   parentCurrencyId: string,
   feeAmount: bigint,
   systemId: string,
   _controlAddress: string,
+  parentProofProtocol = 2,
 ): { script: Buffer; nativeValue: bigint } {
-  void systemId;
-  return buildTokenChangeOutput(parseIAddress(parentCurrencyId, 'parentCurrencyId'), new Map([[parentCurrencyId, feeAmount]]));
+  if (parentProofProtocol === 2) {
+    return buildTokenChangeOutput(parseIAddress(parentCurrencyId, 'parentCurrencyId'), new Map([[parentCurrencyId, feeAmount]]));
+  }
+  return buildRegistrationFeeReserveTransfer(parentCurrencyId, feeAmount, systemId);
+}
+
+/**
+ * CReserveTransfer fee output for a sub-ID under a non-centralized (proofprotocol
+ * != 2) parent — the daemon's form for PBaaS/fractional currencies. Carries
+ * RESERVE_TRANSFER_FEE native.
+ */
+function buildRegistrationFeeReserveTransfer(
+  parentCurrencyId: string,
+  feeAmount: bigint,
+  systemId: string,
+): { script: Buffer; nativeValue: bigint } {
+  const destination = new TxDestination(KeyID.fromAddress(RESERVE_TRANSFER_EVAL_PKH));
+  const values = new CurrencyValueMap({
+    value_map: new Map([[parentCurrencyId, new BN(feeAmount.toString(10))]]),
+    multivalue: false,
+  });
+  const parentHash = fromBase58Check(parentCurrencyId).hash;
+  const transferDest = new TransferDestination({ type: DEST_ID, destination_bytes: Buffer.from(parentHash) });
+  const flags = RESERVE_TRANSFER_VALID.or(RESERVE_TRANSFER_BURN_CHANGE_PRICE);
+  const resTransfer = new ReserveTransfer({
+    values,
+    version: new BN(1),
+    flags,
+    fee_currency_id: systemId,
+    fee_amount: new BN(RESERVE_TRANSFER_FEE.toString(10)),
+    transfer_destination: transferDest,
+    dest_currency_id: parentCurrencyId,
+  });
+  const master = new OptCCParams({
+    version: new BN(3), eval_code: new BN(EVALS.EVAL_NONE), m: new BN(1), n: new BN(1),
+    destinations: [destination], vdata: [],
+  });
+  const params = new OptCCParams({
+    version: new BN(3), eval_code: new BN(EVALS.EVAL_RESERVE_TRANSFER), m: new BN(1), n: new BN(1),
+    destinations: [destination], vdata: [resTransfer.toBuffer()],
+  });
+  const script = new SmartTransactionScript(master, params);
+  return { script: script.toBuffer(), nativeValue: RESERVE_TRANSFER_FEE };
 }
 
 /**
@@ -685,6 +750,11 @@ export function buildAndSignCommitment(
   );
 
   const unsignedTx = txb.buildIncomplete();
+  // Native value conservation: the commitment output is 0 and change is native,
+  // so the assembled native fee must equal selection.fee. The fork's absurd-fee
+  // guard is blind for inputs > 2^32 sats (it truncates input value mod 2^32),
+  // so this bigint check is the real backstop against a change-accounting slip.
+  assertNativeConservation(selection.selected, unsignedTx.outs, selection.fee, 'name commitment');
   const { signedTx, txid } = signTransactionSmart(
     unsignedTx.toHex(),
     params.wif,
@@ -725,6 +795,20 @@ export function buildAndSignRegistration(
   const verusNetwork = getNetwork(network === 'testnet');
   const networkConfig = NETWORK_CONFIG[network];
   const systemId = networkConfig.chainId;
+
+  // Step 2 spends the name-commitment output, which is controlled by the key that
+  // created it in step 1. The fork signs the commitment input with whatever WIF it
+  // is handed, so a mismatched WIF produces a tx the daemon rejects at broadcast
+  // (and the commitment fee is wasted). Verify the WIF's hash is the commitment's
+  // control hash up front. (The 20-byte control hash is embedded in the CC script.)
+  const signerAddr = (ECPair.fromWIF(params.wif, verusNetwork) as { getAddress(): string }).getAddress();
+  const signerHash = addressToScriptPubKey(signerAddr).subarray(3, 23).toString('hex');
+  if (!params.commitmentUtxo.script.toLowerCase().includes(signerHash)) {
+    throw new TransactionBuildError(
+      `the provided WIF (${signerAddr}) does not control the name-commitment output; step 2 must be ` +
+        `signed by the same key that created the commitment in step 1.`,
+    );
+  }
 
   const commitData = params.commitmentData;
   const parentIAddress = commitData.parent || systemId;
@@ -951,18 +1035,39 @@ function _buildSubIdRegistration(
     );
   }
 
+  // The fee-output structure differs by the parent's proofprotocol (2 =
+  // reserve output, else reserve transfer), which the offline SDK cannot read —
+  // the caller must supply it (from `getcurrency <parent>.proofprotocol`).
+  if (params.parentProofProtocol === undefined) {
+    throw new TransactionBuildError(
+      "parentProofProtocol is required for sub-ID registration: pass the parent currency's proofprotocol " +
+        '(from `getcurrency <parent>`) — 2 for a centralized/token currency, 1 for a PBaaS/fractional one.',
+    );
+  }
+
   const feeOutput = buildRegistrationFeeOutput(
     parentIAddress,
     registrationFeeAmount,
     systemId,
     params.changeAddress,
+    params.parentProofProtocol,
   );
 
   const requiredCurrencies = new Map<string, bigint>([
     [parentIAddress, registrationFeeAmount],
   ]);
 
-  const nativeImportFee = params.nativeImportFee || 0n;
+  // The parent currency's idimportfees must leave the transaction as native fee;
+  // this SDK is offline and cannot read it, so the caller must pass it explicitly.
+  // Silently defaulting to 0 underfunds a currency that charges an import fee, and
+  // the daemon rejects the registration.
+  if (params.nativeImportFee === undefined) {
+    throw new TransactionBuildError(
+      "nativeImportFee is required for sub-ID registration: pass the parent currency's idimportfees " +
+        '(from `getcurrency <parent>`), or 0n if it charges none.',
+    );
+  }
+  const nativeImportFee = params.nativeImportFee;
   const nativeTarget = feeOutput.nativeValue + nativeImportFee;
 
   const numOutputs = 4;
@@ -1080,7 +1185,7 @@ export function buildAndSignIdentityUpdate(
   params: UpdateIdentityParams,
   network: Network,
   operation: 'update' | 'revoke' | 'recover' | 'lock' | 'unlock' = 'update',
-  lockUnlockParams?: { unlockAfter?: number }
+  lockUnlockParams?: { unlockDelayBlocks?: number; sanityOverride?: boolean }
 ): UpdateIdentityResult {
   validateIdentityWif(params.wif);
   if (!params.identityHex) {
@@ -1125,6 +1230,19 @@ export function buildAndSignIdentityUpdate(
           `[${currentPrimaries.join(', ')}]; it cannot authorize a ${operation}.`,
       );
     }
+    // Spending the identity input under primary authority needs min_sigs
+    // signatures, but this SDK signs with a single WIF and the bundled fork
+    // cannot attach a second signature to a CryptoCondition input. Emitting a
+    // 1-of-N-signed tx for a min_sigs>1 identity yields a hex the daemon rejects
+    // at broadcast; fail closed instead.
+    const currentMinSigs = identity.min_sigs?.toNumber?.() ?? 1;
+    if (currentMinSigs > 1) {
+      throw new TransactionBuildError(
+        `this identity requires ${currentMinSigs} signatures (min_sigs > 1); the SDK signs with a single ` +
+          `WIF and the bundled fork cannot multi-sign a CryptoCondition input, so a valid ${operation} ` +
+          `transaction cannot be produced. Use the daemon for multisig identities.`,
+      );
+    }
   }
 
   switch (operation) {
@@ -1144,14 +1262,22 @@ export function buildAndSignIdentityUpdate(
         identity.setRecovery(params.recoveryAuthority);
       }
       if (params.contentMap) {
+        // The daemon REPLACES the whole contentmap when the field is provided
+        // (and the contentMultimap branch below already replaces via fromJson).
+        // Merging into the parsed on-chain map instead re-attested stale keys and
+        // gave no way to delete one. Clear first so the provided map is authoritative.
+        identity.content_map.clear();
         for (const [key, value] of Object.entries(params.contentMap)) {
-          // Buffer.from(_, 'hex') silently drops non-hex characters and
-          // truncates odd-length input, so a malformed value would be committed
-          // to the identity on-chain as wrong/empty bytes with no error. Reject
-          // it instead.
-          if (!/^[0-9a-fA-F]*$/.test(value) || value.length % 2 !== 0) {
+          // Keys are vdxf i-addresses; the primitives run fromBase58Check(key),
+          // which discards the version byte — guard it like the multimap branch.
+          assertAddressVersion(key, I_ADDR_VERSION, `contentMap key "${key}"`);
+          // Values serialize as a fixed uint256 (32 bytes). Buffer.from(_, 'hex')
+          // silently drops non-hex and truncates, so a wrong-length value would be
+          // committed on-chain as wrong bytes (or build a payload the daemon can't
+          // deserialize). Require exactly 64 hex chars.
+          if (!/^[0-9a-fA-F]{64}$/.test(value)) {
             throw new TransactionBuildError(
-              `contentMap["${key}"] must be an even-length hex string (got ${JSON.stringify(value)})`,
+              `contentMap["${key}"] must be a 32-byte (64-hex-char) value (got ${JSON.stringify(value)})`,
             );
           }
           identity.content_map.set(key, Buffer.from(value, 'hex'));
@@ -1192,6 +1318,13 @@ export function buildAndSignIdentityUpdate(
       if (params.primaryAddresses) {
         identity.setPrimaryAddresses(params.primaryAddresses);
       }
+      // Recovery commonly replaces the primary set; allow lowering min_sigs so a
+      // 2-of-2 identity can be recovered to a single fresh key (otherwise the
+      // stale min_sigs would exceed the new primary count — see the guard below).
+      if (params.minSigs !== undefined) {
+        validateMinSigs(params.minSigs, identity.primary_addresses?.length ?? 0);
+        identity.min_sigs = new BN(params.minSigs);
+      }
       if (params.revocationAuthority) {
         identity.setRevocation(params.revocationAuthority);
       }
@@ -1201,11 +1334,26 @@ export function buildAndSignIdentityUpdate(
       break;
     }
     case 'lock': {
-      const unlockAfter = lockUnlockParams?.unlockAfter;
-      if (!unlockAfter) {
-        throw new TransactionBuildError('unlockAfter (block height) is required for lock operation');
+      const delay = lockUnlockParams?.unlockDelayBlocks;
+      if (delay === undefined || !Number.isInteger(delay) || delay <= 0) {
+        throw new TransactionBuildError(
+          'unlockDelayBlocks (a positive integer RELATIVE delay in blocks, not a block height) is required for lock',
+        );
       }
-      identity.lock(new BN(unlockAfter));
+      if (delay > MAX_UNLOCK_DELAY) {
+        throw new TransactionBuildError(
+          `unlockDelayBlocks ${delay} exceeds the consensus maximum ${MAX_UNLOCK_DELAY} (~22 years)`,
+        );
+      }
+      // A block height (millions) passed as a delay locks the identity for years.
+      // Require an explicit opt-in above ~1 year to catch that mistake.
+      if (delay > LOCK_DELAY_SANITY_BLOCKS && !lockUnlockParams?.sanityOverride) {
+        throw new TransactionBuildError(
+          `unlockDelayBlocks ${delay} is over ~1 year (${LOCK_DELAY_SANITY_BLOCKS} blocks) — this is a RELATIVE ` +
+            `delay, not a block height; pass sanityOverride: true if that long a lock is intended.`,
+        );
+      }
+      identity.lock(new BN(delay));
       break;
     }
     case 'unlock': {
@@ -1223,6 +1371,18 @@ export function buildAndSignIdentityUpdate(
       identity.unlock(new BN(0), new BN(unlockExpiry));
       break;
     }
+  }
+
+  // A valid identity always has min_sigs <= number of primary addresses. Shrinking
+  // the primary set (update/recover) without lowering minSigs would leave a stale
+  // min_sigs the daemon rejects — or, worse, a permanently unspendable identity.
+  const finalPrimaries = identity.primary_addresses?.length ?? 0;
+  const finalMinSigs = identity.min_sigs?.toNumber?.() ?? 1;
+  if (finalMinSigs > finalPrimaries) {
+    throw new TransactionBuildError(
+      `resulting identity has min_sigs ${finalMinSigs} but only ${finalPrimaries} primary address(es); ` +
+        `pass minSigs to lower it when reducing the primary set.`,
+    );
   }
 
   const identityBuf = identity.toBuffer();

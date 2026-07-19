@@ -155,10 +155,23 @@ describe('identity', () => {
       expect(out.nativeValue).toBe(0n);
     });
 
-    it('is a reserve output of the fee token at the parent currency address', () => {
-      const fee = buildRegistrationFeeOutput(parent, feeAmount, SYSTEM_ID, TEST_ADDR);
+    it('is a reserve output of the fee token at the parent currency address (proofprotocol 2)', () => {
+      const fee = buildRegistrationFeeOutput(parent, feeAmount, SYSTEM_ID, TEST_ADDR, 2);
       const equivalent = buildTokenChangeOutput(parseAddress(parent), new Map([[parent, feeAmount]]));
       expect(fee.script.toString('hex')).toBe(equivalent.script.toString('hex'));
+    });
+
+    it('is a CReserveTransfer carrying 0.0002 native for a non-centralized parent (proofprotocol 1)', () => {
+      // Byte-verified against an accepted on-chain fum (proofprotocol 1) sub-ID
+      // registration on VRSCTEST (tx 5c34764...): the fee output is an
+      // EVAL_RESERVE_TRANSFER with RESERVE_TRANSFER_FEE native, NOT a reserve output.
+      const fum = 'i4KtZ8jeMipNJfAdmfxkzQZKmaGpjvhYKe';
+      const sys = 'iJhCezBExJHvtyH3fGhNnt2NhU4Ztkf2yq';
+      const out = buildRegistrationFeeOutput(fum, 100_000_000n, sys, TEST_ADDR, 1);
+      expect(out.nativeValue).toBe(20_000n);
+      expect(out.script.toString('hex')).toBe(
+        '1a040300010114cb8a0f7f651b484a81e2312c3438deb601e27368cc4c78040308010114cb8a0f7f651b484a81e2312c3438deb601e273684c5c010956037c7df826ac1a77e91a0d56c16ed912f631aed6c1008001a6ef9ea235635e328124ff3429db9f9e91b64e2d809b2004140956037c7df826ac1a77e91a0d56c16ed912f6310956037c7df826ac1a77e91a0d56c16ed912f63175',
+      );
     });
   });
 
@@ -270,6 +283,17 @@ describe('identity', () => {
       expect(result.serializedCommitmentHash.length).toBe(33);
       expect(result.commitmentScript.length).toBeGreaterThan(0);
       expect(result.identityAddress).toMatch(/^i/);
+    });
+
+    it('rejects a referral on a sub-ID (non-VRSC-parent) commitment', () => {
+      // The referral would be committed into the advanced reservation hash, but
+      // the sub-ID registration path emits no referral payout — the daemon would
+      // reject the mismatch. Fail closed at commitment.
+      const referral = deriveIdentityAddress('subrefr', SYSTEM_ID);
+      const parent = deriveIdentityAddress('subpar', SYSTEM_ID);
+      expect(() =>
+        prepareNameCommitment('subx', TEST_ADDR, referral, parent, 'testnet'),
+      ).toThrow(/not supported for sub-ID/);
     });
 
     it('rejects an R-address referral (would be laundered into a bogus identity)', () => {

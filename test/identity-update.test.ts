@@ -7,7 +7,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { Transaction, networks } from '@bitgo/utxo-lib';
+import { IdentityScript } from 'verus-typescript-primitives';
 import { buildAndSignIdentityUpdate } from '../src/identity/index.js';
+import { iAddressToHash } from '../src/utils/index.js';
 import {
   TEST_WIF,
   TEST_ADDRESS,
@@ -17,9 +20,44 @@ import {
   makeFundingUtxo,
   createMockIdentityHex,
 } from './fixtures/index.js';
-import { deriveIdentityAddress, buildTokenChangeOutput } from '../src/identity/index.js';
-import { parseAddress } from '../src/core/brands.js';
+import { deriveIdentityAddress, buildTokenChangeOutput, createIdentityObject } from '../src/identity/index.js';
+import { parseAddress, parseRAddress, parseIAddress } from '../src/core/brands.js';
 import { TransactionBuildError } from '../src/errors.js';
+
+/** Serialized hex of a 2-of-2 (min_sigs=2) identity controlled by TEST_ADDRESS + _B. */
+function twoOfTwoHex(name: string): string {
+  const iaddr = deriveIdentityAddress(name, VRSCTEST_SYSTEM_ID);
+  return createIdentityObject({
+    name,
+    primaryAddresses: [parseRAddress(TEST_ADDRESS), parseRAddress(TEST_ADDRESS_B)],
+    minSigs: 2,
+    revocationAuthority: parseIAddress(iaddr),
+    recoveryAuthority: parseIAddress(iaddr),
+    parentIAddress: parseIAddress(VRSCTEST_SYSTEM_ID),
+    systemId: parseIAddress(VRSCTEST_SYSTEM_ID),
+  }).toBuffer().toString('hex');
+}
+
+/** A 2-of-2 identity whose recovery authority is a DIFFERENT identity, so the
+ *  recover path is not gated by the self-authority min_sigs>1 guard. */
+function twoOfTwoRecoverable(name: string) {
+  const iaddr = deriveIdentityAddress(name, VRSCTEST_SYSTEM_ID);
+  const otherRec = deriveIdentityAddress(name + 'rec', VRSCTEST_SYSTEM_ID);
+  const id = createIdentityObject({
+    name,
+    primaryAddresses: [parseRAddress(TEST_ADDRESS), parseRAddress(TEST_ADDRESS_B)],
+    minSigs: 2,
+    revocationAuthority: parseIAddress(iaddr),
+    recoveryAuthority: parseIAddress(otherRec),
+    parentIAddress: parseIAddress(VRSCTEST_SYSTEM_ID),
+    systemId: parseIAddress(VRSCTEST_SYSTEM_ID),
+  });
+  const script = IdentityScript.fromIdentity(id).toBuffer();
+  return {
+    identityHex: id.toBuffer().toString('hex'),
+    identityUtxo: { txid: 'ff'.repeat(32), outputIndex: 0, satoshis: 0n, script: script.toString('hex') },
+  };
+}
 
 const SYSTEM_ID = VRSCTEST_SYSTEM_ID;
 
@@ -41,6 +79,102 @@ function makeUpdateParams(name: string, overrides?: Record<string, unknown>) {
 // ─── Update operations ───────────────────────────────────
 
 describe('buildAndSignIdentityUpdate', () => {
+  describe('contentMap replaces, not merges (regression)', () => {
+    // Build an identity carrying content_map {keyB} and its matching identity UTXO.
+    function idWithContentB(name: string, keyB: string) {
+      const iaddr = deriveIdentityAddress(name, VRSCTEST_SYSTEM_ID);
+      const id = createIdentityObject({
+        name,
+        primaryAddresses: [parseRAddress(TEST_ADDRESS)],
+        revocationAuthority: parseIAddress(iaddr),
+        recoveryAuthority: parseIAddress(iaddr),
+        parentIAddress: parseIAddress(VRSCTEST_SYSTEM_ID),
+        systemId: parseIAddress(VRSCTEST_SYSTEM_ID),
+      });
+      id.content_map.set(keyB, Buffer.from('bb'.repeat(32), 'hex'));
+      const script = IdentityScript.fromIdentity(id).toBuffer();
+      return {
+        identityHex: id.toBuffer().toString('hex'),
+        identityUtxo: { txid: 'ee'.repeat(32), outputIndex: 0, satoshis: 0n, script: script.toString('hex') },
+      };
+    }
+
+    it('drops the pre-existing content_map key when a new contentMap is provided', () => {
+      const keyB = deriveIdentityAddress('cmoldkey', VRSCTEST_SYSTEM_ID);
+      const keyA = deriveIdentityAddress('cmnewkey', VRSCTEST_SYSTEM_ID);
+      const { identityHex, identityUtxo } = idWithContentB('cmreplace', keyB);
+
+      const result = buildAndSignIdentityUpdate(
+        {
+          wif: TEST_WIF,
+          identityHex,
+          identityUtxo,
+          utxos: [makeFundingUtxo('aa', 100_000_000n)],
+          changeAddress: TEST_ADDRESS,
+          expiryHeight: 0,
+          contentMap: { [keyA]: 'aa'.repeat(32) },
+        },
+        NETWORK,
+        'update',
+      );
+
+      const tx = Transaction.fromHex(result.signedTx, networks.verustest);
+      const idOut = Buffer.from((tx.outs[0] as { script: Buffer }).script).toString('hex');
+      const keyAHash = iAddressToHash(keyA).toString('hex');
+      const keyBHash = iAddressToHash(keyB).toString('hex');
+      // The new key is committed; the old key is REPLACED (would still be present if merged).
+      expect(idOut).toContain(keyAHash);
+      expect(idOut).not.toContain(keyBHash);
+    });
+  });
+
+  describe('boundary validation (regression)', () => {
+    it('rejects an R-address contentMap key (version laundering)', () => {
+      const params = makeUpdateParams('cmaprkey', { contentMap: { [TEST_ADDRESS]: 'ab'.repeat(32) } });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(/must be an identity i-address/);
+    });
+
+    it('rejects a contentMap value that is not exactly 32 bytes', () => {
+      const key = deriveIdentityAddress('cmshort', SYSTEM_ID);
+      const params = makeUpdateParams('cmapshort', { contentMap: { [key]: 'ab'.repeat(16) } }); // 16 bytes
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(/32-byte/);
+    });
+
+    it('recover honors minSigs (lower a 2-of-2 to one fresh key)', () => {
+      const { identityHex, identityUtxo } = twoOfTwoRecoverable('recmin');
+      const base = {
+        wif: TEST_WIF, identityHex, identityUtxo,
+        utxos: [makeFundingUtxo('aa', 100_000_000n)],
+        changeAddress: TEST_ADDRESS, expiryHeight: 0,
+        primaryAddresses: [TEST_ADDRESS],
+      };
+      // With minSigs:1 the shrink is consistent and it builds.
+      const ok = buildAndSignIdentityUpdate({ ...base, minSigs: 1 }, NETWORK, 'recover');
+      expect(ok.operation).toBe('recover');
+      // Without minSigs the stale min_sigs 2 > 1 primary — fail closed.
+      expect(() => buildAndSignIdentityUpdate(base, NETWORK, 'recover')).toThrow(/primary address/);
+    });
+  });
+
+  describe('min_sigs enforcement (regression)', () => {
+    it('fails closed on a min_sigs>1 identity: the SDK cannot multi-sign a CC input', () => {
+      const params = makeUpdateParams('minsigs2', {
+        identityHex: twoOfTwoHex('minsigs2'),
+        primaryAddresses: [TEST_ADDRESS_B],
+      });
+      // TEST_WIF (TEST_ADDRESS) is a primary, so the authority check passes and
+      // the min_sigs guard is what must fire — not a false "not a primary" throw.
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(/min_sigs > 1/);
+    });
+
+    it('rejects shrinking the primary set below the (unchanged) min_sigs', () => {
+      // min_sigs=1 identity; dropping to 0 primaries without lowering minSigs
+      // would leave min_sigs 1 > 0 primaries — the daemon rejects it.
+      const params = makeUpdateParams('shrink', { primaryAddresses: [] });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(/primary address/);
+    });
+  });
+
   describe('update', () => {
     it('should update primary addresses', () => {
       const params = makeUpdateParams('updaddr', {
@@ -143,14 +277,14 @@ describe('buildAndSignIdentityUpdate', () => {
   // ─── Lock ──────────────────────────────────────────────
 
   describe('lock', () => {
-    it('should lock with unlockAfter height', () => {
+    it('should lock with a relative delay (under the ~1y sanity cap)', () => {
       const params = makeUpdateParams('lockid');
 
       const result = buildAndSignIdentityUpdate(
         params,
         NETWORK,
         'lock',
-        { unlockAfter: 500_000 },
+        { unlockDelayBlocks: 500_000 }, // < LOCK_DELAY_SANITY_BLOCKS (525_600)
       );
 
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -158,12 +292,27 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.fee).toBeGreaterThan(0n);
     });
 
-    it('should throw when unlockAfter is missing for lock', () => {
+    it('should throw when unlockDelayBlocks is missing for lock', () => {
       const params = makeUpdateParams('lockfail');
 
       expect(() =>
         buildAndSignIdentityUpdate(params, NETWORK, 'lock'),
-      ).toThrow(/unlockAfter/);
+      ).toThrow(/unlockDelayBlocks/);
+    });
+
+    it('rejects a block-height-sized delay without sanityOverride (the years-lock footgun)', () => {
+      const params = makeUpdateParams('lockbig');
+      // A user passing a block height (~3.3M) meaning "until block X" would lock
+      // for years; require an explicit opt-in.
+      expect(() =>
+        buildAndSignIdentityUpdate(params, NETWORK, 'lock', { unlockDelayBlocks: 3_300_000 }),
+      ).toThrow(/relative.*delay|over ~1 year/i);
+      // With the opt-in it builds.
+      const ok = buildAndSignIdentityUpdate(params, NETWORK, 'lock', {
+        unlockDelayBlocks: 3_300_000,
+        sanityOverride: true,
+      });
+      expect(ok.operation).toBe('lock');
     });
   });
 
