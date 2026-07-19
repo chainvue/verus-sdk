@@ -111,6 +111,7 @@ describe('buildAndSignRegistration', () => {
           utxos: [{ txid: 'bb'.repeat(32), outputIndex: 0, satoshis: 100_000_000n, script: TEST_SCRIPT }],
           changeAddress: TEST_ADDRESS, expiryHeight: 0,
           registrationFeeAmount: 100_000_000n,
+          parentProofProtocol: 2,
           // nativeImportFee intentionally omitted
         },
         NETWORK,

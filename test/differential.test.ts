@@ -62,7 +62,7 @@ describe('Tier-0 differential: SDK structure matches recorded daemon shape', () 
           { txid: 'cc'.repeat(32), outputIndex: 0, satoshis: 0n, script: tokenScript.toString('hex') },
         ],
         changeAddress: TEST_ADDRESS, expiryHeight: 0,
-        registrationFeeAmount: 100_000_000n, nativeImportFee: 2_000_000n,
+        registrationFeeAmount: 100_000_000n, nativeImportFee: 2_000_000n, parentProofProtocol: 2,
       },
       NETWORK,
     );

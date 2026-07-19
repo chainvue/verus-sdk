@@ -196,6 +196,7 @@ function buildScenarios(): Scenario[] {
         expiryHeight: 0,
         registrationFeeAmount: 100_000_000n, // 1.0 of the parent currency
         nativeImportFee: 0n, // parent charges no import fee in this scenario
+        parentProofProtocol: 2,
       },
       NETWORK,
     );

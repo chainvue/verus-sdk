@@ -121,6 +121,7 @@ describe('golden signed-tx bytes (Phase-0 behavior lock)', () => {
         expiryHeight: 0,
         registrationFeeAmount: 100_000_000n,
         nativeImportFee: 2_000_000n,
+        parentProofProtocol: 2,
       },
       NETWORK,
     );
