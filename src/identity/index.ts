@@ -777,7 +777,7 @@ export function buildAndSignRegistration(
   );
 
   if (isSubId) {
-    return _buildSubIdRegistration(params, identity, identityScript, reservationScript, identityAddress, parentIAddress, systemId, network);
+    return _buildSubIdRegistration(params, identityScript, reservationScript, identityAddress, parentIAddress, systemId, network);
   }
 
   return _buildVrscRegistration(params, identityScript, reservationScript, identityAddress, parentIAddress, network);
@@ -885,7 +885,6 @@ function _buildVrscRegistration(
 
 function _buildSubIdRegistration(
   params: RegisterIdentityParams,
-  identity: Identity,
   identityScript: Buffer,
   reservationScript: Buffer,
   identityAddress: string,
