@@ -176,14 +176,14 @@ describe('buildAndSignIdentityUpdate', () => {
   // ─── Lock ──────────────────────────────────────────────
 
   describe('lock', () => {
-    it('should lock with unlockAfter height', () => {
+    it('should lock with a relative delay (under the ~1y sanity cap)', () => {
       const params = makeUpdateParams('lockid');
 
       const result = buildAndSignIdentityUpdate(
         params,
         NETWORK,
         'lock',
-        { unlockAfter: 500_000 },
+        { unlockDelayBlocks: 500_000 }, // < LOCK_DELAY_SANITY_BLOCKS (525_600)
       );
 
       expect(result.signedTx).toMatch(/^[0-9a-f]+$/);
@@ -191,12 +191,27 @@ describe('buildAndSignIdentityUpdate', () => {
       expect(result.fee).toBeGreaterThan(0n);
     });
 
-    it('should throw when unlockAfter is missing for lock', () => {
+    it('should throw when unlockDelayBlocks is missing for lock', () => {
       const params = makeUpdateParams('lockfail');
 
       expect(() =>
         buildAndSignIdentityUpdate(params, NETWORK, 'lock'),
-      ).toThrow(/unlockAfter/);
+      ).toThrow(/unlockDelayBlocks/);
+    });
+
+    it('rejects a block-height-sized delay without sanityOverride (the years-lock footgun)', () => {
+      const params = makeUpdateParams('lockbig');
+      // A user passing a block height (~3.3M) meaning "until block X" would lock
+      // for years; require an explicit opt-in.
+      expect(() =>
+        buildAndSignIdentityUpdate(params, NETWORK, 'lock', { unlockDelayBlocks: 3_300_000 }),
+      ).toThrow(/relative.*delay|over ~1 year/i);
+      // With the opt-in it builds.
+      const ok = buildAndSignIdentityUpdate(params, NETWORK, 'lock', {
+        unlockDelayBlocks: 3_300_000,
+        sanityOverride: true,
+      });
+      expect(ok.operation).toBe('lock');
     });
   });
 

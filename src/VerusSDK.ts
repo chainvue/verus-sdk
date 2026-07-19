@@ -90,7 +90,10 @@ export class VerusSDK {
     return identityModule.buildAndSignIdentityUpdate(params, this.network, 'update');
   }
 
-  /** Lock an identity until a specified block height */
+  /**
+   * Lock an identity for a RELATIVE delay of `unlockDelayBlocks` blocks (NOT an
+   * absolute block height — passing a height locks the identity for years).
+   */
   lockIdentity(params: LockIdentityParams): UpdateIdentityResult {
     return identityModule.buildAndSignIdentityUpdate(
       {
@@ -103,7 +106,7 @@ export class VerusSDK {
       },
       this.network,
       'lock',
-      { unlockAfter: params.unlockAfter },
+      { unlockDelayBlocks: params.unlockDelayBlocks, sanityOverride: params.sanityOverride ?? false },
     );
   }
 
