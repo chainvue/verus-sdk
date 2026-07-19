@@ -152,6 +152,7 @@ export class VerusSDK {
         utxos: params.utxos,
         changeAddress: params.changeAddress,
         ...(params.primaryAddresses !== undefined ? { primaryAddresses: params.primaryAddresses } : {}),
+        ...(params.minSigs !== undefined ? { minSigs: params.minSigs } : {}),
         ...(params.revocationAuthority !== undefined ? { revocationAuthority: params.revocationAuthority } : {}),
         ...(params.recoveryAuthority !== undefined ? { recoveryAuthority: params.recoveryAuthority } : {}),
         expiryHeight: params.expiryHeight,

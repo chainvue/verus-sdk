@@ -1268,13 +1268,16 @@ export function buildAndSignIdentityUpdate(
         // gave no way to delete one. Clear first so the provided map is authoritative.
         identity.content_map.clear();
         for (const [key, value] of Object.entries(params.contentMap)) {
-          // Buffer.from(_, 'hex') silently drops non-hex characters and
-          // truncates odd-length input, so a malformed value would be committed
-          // to the identity on-chain as wrong/empty bytes with no error. Reject
-          // it instead.
-          if (!/^[0-9a-fA-F]*$/.test(value) || value.length % 2 !== 0) {
+          // Keys are vdxf i-addresses; the primitives run fromBase58Check(key),
+          // which discards the version byte — guard it like the multimap branch.
+          assertAddressVersion(key, I_ADDR_VERSION, `contentMap key "${key}"`);
+          // Values serialize as a fixed uint256 (32 bytes). Buffer.from(_, 'hex')
+          // silently drops non-hex and truncates, so a wrong-length value would be
+          // committed on-chain as wrong bytes (or build a payload the daemon can't
+          // deserialize). Require exactly 64 hex chars.
+          if (!/^[0-9a-fA-F]{64}$/.test(value)) {
             throw new TransactionBuildError(
-              `contentMap["${key}"] must be an even-length hex string (got ${JSON.stringify(value)})`,
+              `contentMap["${key}"] must be a 32-byte (64-hex-char) value (got ${JSON.stringify(value)})`,
             );
           }
           identity.content_map.set(key, Buffer.from(value, 'hex'));
