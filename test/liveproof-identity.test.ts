@@ -195,6 +195,7 @@ function buildScenarios(): Scenario[] {
         changeAddress: TEST_ADDRESS,
         expiryHeight: 0,
         registrationFeeAmount: 100_000_000n, // 1.0 of the parent currency
+        nativeImportFee: 0n, // parent charges no import fee in this scenario
       },
       NETWORK,
     );

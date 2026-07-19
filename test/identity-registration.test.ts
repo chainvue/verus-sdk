@@ -88,6 +88,36 @@ function createMockRegistrationInputs(
 // ─── Tests ────────────────────────────────────────────
 
 describe('buildAndSignRegistration', () => {
+  it('requires nativeImportFee for a sub-ID registration (no silent 0 default)', () => {
+    const parent = deriveIdentityAddress('subparentfee', SYSTEM_ID);
+    const commitment = prepareNameCommitment('subfeereq', TEST_ADDRESS, undefined, parent, NETWORK);
+    const commitmentData: CommitmentData = {
+      name: 'subfeereq',
+      salt: commitment.salt.toString('hex'),
+      referral: null,
+      parent,
+      namereservationHex: commitment.serializedReservation.toString('hex'),
+      commitmentHash: commitment.commitmentHash.toString('hex'),
+    };
+    const commitmentUtxo: Utxo = {
+      txid: 'aa'.repeat(32), outputIndex: 0, satoshis: 0n,
+      script: commitment.commitmentScript.toString('hex'),
+    };
+    expect(() =>
+      buildAndSignRegistration(
+        {
+          wif: TEST_WIF, commitmentUtxo, commitmentData,
+          primaryAddresses: [TEST_ADDRESS],
+          utxos: [{ txid: 'bb'.repeat(32), outputIndex: 0, satoshis: 100_000_000n, script: TEST_SCRIPT }],
+          changeAddress: TEST_ADDRESS, expiryHeight: 0,
+          registrationFeeAmount: 100_000_000n,
+          // nativeImportFee intentionally omitted
+        },
+        NETWORK,
+      ),
+    ).toThrow(/nativeImportFee is required/);
+  });
+
   it('rejects a WIF that does not control the name-commitment output', () => {
     // Commitment controlled by TEST_ADDRESS; signing step 2 with TEST_WIF_B
     // (a different key) would spend an input it cannot unlock — the daemon
