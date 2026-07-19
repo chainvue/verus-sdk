@@ -17,9 +17,23 @@ import {
   makeFundingUtxo,
   createMockIdentityHex,
 } from './fixtures/index.js';
-import { deriveIdentityAddress, buildTokenChangeOutput } from '../src/identity/index.js';
-import { parseAddress } from '../src/core/brands.js';
+import { deriveIdentityAddress, buildTokenChangeOutput, createIdentityObject } from '../src/identity/index.js';
+import { parseAddress, parseRAddress, parseIAddress } from '../src/core/brands.js';
 import { TransactionBuildError } from '../src/errors.js';
+
+/** Serialized hex of a 2-of-2 (min_sigs=2) identity controlled by TEST_ADDRESS + _B. */
+function twoOfTwoHex(name: string): string {
+  const iaddr = deriveIdentityAddress(name, VRSCTEST_SYSTEM_ID);
+  return createIdentityObject({
+    name,
+    primaryAddresses: [parseRAddress(TEST_ADDRESS), parseRAddress(TEST_ADDRESS_B)],
+    minSigs: 2,
+    revocationAuthority: parseIAddress(iaddr),
+    recoveryAuthority: parseIAddress(iaddr),
+    parentIAddress: parseIAddress(VRSCTEST_SYSTEM_ID),
+    systemId: parseIAddress(VRSCTEST_SYSTEM_ID),
+  }).toBuffer().toString('hex');
+}
 
 const SYSTEM_ID = VRSCTEST_SYSTEM_ID;
 
@@ -41,6 +55,25 @@ function makeUpdateParams(name: string, overrides?: Record<string, unknown>) {
 // ─── Update operations ───────────────────────────────────
 
 describe('buildAndSignIdentityUpdate', () => {
+  describe('min_sigs enforcement (regression)', () => {
+    it('fails closed on a min_sigs>1 identity: the SDK cannot multi-sign a CC input', () => {
+      const params = makeUpdateParams('minsigs2', {
+        identityHex: twoOfTwoHex('minsigs2'),
+        primaryAddresses: [TEST_ADDRESS_B],
+      });
+      // TEST_WIF (TEST_ADDRESS) is a primary, so the authority check passes and
+      // the min_sigs guard is what must fire — not a false "not a primary" throw.
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(/min_sigs > 1/);
+    });
+
+    it('rejects shrinking the primary set below the (unchanged) min_sigs', () => {
+      // min_sigs=1 identity; dropping to 0 primaries without lowering minSigs
+      // would leave min_sigs 1 > 0 primaries — the daemon rejects it.
+      const params = makeUpdateParams('shrink', { primaryAddresses: [] });
+      expect(() => buildAndSignIdentityUpdate(params, NETWORK, 'update')).toThrow(/primary address/);
+    });
+  });
+
   describe('update', () => {
     it('should update primary addresses', () => {
       const params = makeUpdateParams('updaddr', {
