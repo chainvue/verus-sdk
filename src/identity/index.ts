@@ -199,7 +199,7 @@ export function serializeCommitmentHash(hash: Buffer): Buffer {
  */
 export function buildCommitmentScript(
   commitmentHashBuf: Buffer,
-  controlAddress: string,
+  controlAddress: RAddress,
 ): Buffer {
   const controlDest = new TxDestination(KeyID.fromAddress(controlAddress));
 
@@ -359,7 +359,7 @@ export function prepareNameCommitment(
 
   const commitmentHash = calculateCommitmentHash(serializedReservation);
   const serializedCommitmentHash = serializeCommitmentHash(commitmentHash);
-  const commitmentScript = buildCommitmentScript(commitmentHash, controlAddress);
+  const commitmentScript = buildCommitmentScript(commitmentHash, parseRAddress(controlAddress, 'controlAddress'));
 
   return {
     salt,
