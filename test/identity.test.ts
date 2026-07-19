@@ -21,7 +21,7 @@ import {
   buildTokenChangeOutput,
 } from '../src/identity/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
-import { parseIAddress } from '../src/core/brands.js';
+import { parseIAddress, parseRAddress } from '../src/core/brands.js';
 import { getNetwork } from '../src/signing/index.js';
 import { NETWORK_CONFIG, DEFAULT_REGISTRATION_FEE } from '../src/constants/index.js';
 
@@ -334,40 +334,22 @@ describe('identity', () => {
     it('should create a valid Identity', () => {
       const identity = createIdentityObject({
         name: 'testid',
-        primaryAddresses: [TEST_ADDR],
-        revocationAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
-        recoveryAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
-        parentIAddress: SYSTEM_ID,
-        systemId: SYSTEM_ID,
+        primaryAddresses: [parseRAddress(TEST_ADDR)],
+        revocationAuthority: parseIAddress(deriveIdentityAddress('testid', SYSTEM_ID)),
+        recoveryAuthority: parseIAddress(deriveIdentityAddress('testid', SYSTEM_ID)),
+        parentIAddress: parseIAddress(SYSTEM_ID),
+        systemId: parseIAddress(SYSTEM_ID),
       });
       expect(identity.name).toBe('testid');
       expect(identity.getIdentityAddress()).toMatch(/^i/);
     });
 
-    it('rejects an R-address parent (would be laundered to an identity hash)', () => {
-      expect(() =>
-        createIdentityObject({
-          name: 'testid',
-          primaryAddresses: [TEST_ADDR],
-          revocationAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
-          recoveryAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
-          parentIAddress: TEST_ADDR, // R-address, not an i-address
-          systemId: SYSTEM_ID,
-        }),
-      ).toThrow(/parentIAddress must be an identity i-address/);
-    });
-
-    it('rejects an R-address systemId', () => {
-      expect(() =>
-        createIdentityObject({
-          name: 'testid',
-          primaryAddresses: [TEST_ADDR],
-          revocationAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
-          recoveryAuthority: deriveIdentityAddress('testid', SYSTEM_ID),
-          parentIAddress: SYSTEM_ID,
-          systemId: TEST_ADDR, // R-address, not an i-address
-        }),
-      ).toThrow(/systemId must be an identity i-address/);
+    it('an R-address parent/systemId is now rejected at parse time (compile error to pass unparsed)', () => {
+      // The version guard moved from createIdentityObject into the brand parser
+      // at the call site; passing a raw R-address is a compile error, and the
+      // runtime rejection lives here.
+      expect(() => parseIAddress(TEST_ADDR, 'parentIAddress')).toThrow(/parentIAddress must be an identity i-address/);
+      expect(() => parseIAddress(TEST_ADDR, 'systemId')).toThrow(/systemId must be an identity i-address/);
     });
   });
 });
