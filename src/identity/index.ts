@@ -782,7 +782,7 @@ export function buildAndSignRegistration(
     return _buildSubIdRegistration(params, identity, identityScript, reservationScript, identityAddress, parentIAddress, systemId, verusNetwork);
   }
 
-  return _buildVrscRegistration(params, identityScript, reservationScript, identityAddress, parentIAddress, systemId, verusNetwork);
+  return _buildVrscRegistration(params, identityScript, reservationScript, identityAddress, parentIAddress, network);
 }
 
 function _buildVrscRegistration(
@@ -791,8 +791,7 @@ function _buildVrscRegistration(
   reservationScript: Buffer,
   identityAddress: string,
   parentIAddress: string,
-  systemId: string,
-  network: VerusNetwork,
+  network: Network,
 ): RegisterIdentityResult {
   const commitData = params.commitmentData;
   const hasReferral = !!commitData.referral;
@@ -838,126 +837,51 @@ function _buildVrscRegistration(
   // exactly (totalFee - issuerFee) every referred registration.
   const totalFee = params.registrationFee ?? DEFAULT_REGISTRATION_FEE;
   const totalReferralPayments = referralOutputs.reduce((sum, o) => sum + o.value, 0n);
-  const requiredNative = hasReferral ? fees.issuerFee : totalFee;
-  const numOutputs = 2 + referralOutputs.length + 1;
-  const selection = selectUtxos(
-    params.utxos,
-    requiredNative,
-    new Map(),
-    numOutputs,
-    systemId,
-    undefined,
-    true,
-  );
+  // With a referral the registrant pays the discounted issuer fee, otherwise the
+  // full registration fee. Either way the referral payouts come OUT OF that
+  // outlay; the remainder is burned as the implicit miner fee.
+  const registrationOutlay = hasReferral ? fees.issuerFee : totalFee;
 
-  const txb = new TransactionBuilder(network);
-  txb.setVersion(4);
-  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
-  txb.setVersionGroupId(VERSION_GROUP_ID);
-
-  const commitUtxo = params.commitmentUtxo;
-  txb.addInput(
-    Buffer.from(commitUtxo.txid, 'hex').reverse(),
-    commitUtxo.outputIndex,
-    0xffffffff,
-    Buffer.from(commitUtxo.script, 'hex'),
-  );
-
-  for (const utxo of selection.selected) {
-    txb.addInput(
-      Buffer.from(utxo.txid, 'hex').reverse(),
-      utxo.outputIndex,
-      0xffffffff,
-      Buffer.from(utxo.script, 'hex'),
-    );
-  }
-
-  txb.addOutput(identityScript, 0);
-
-  for (const referralOut of referralOutputs) {
-    txb.addOutput(referralOut.script, toSafeNumber(referralOut.value));
-  }
-
-  txb.addOutput(reservationScript, 0);
-
-  // Registration needs ~80-100 native, so Phase-2 selection is especially
-  // likely to exhaust pure-native UTXOs and pull a token-bearing one; return
-  // its token value as reserve-output change instead of forfeiting it to the
-  // miner. (The commitment input carries no currency.)
-  const hasTokenChange = selection.currencyChanges.size > 0;
-  if (hasTokenChange || selection.nativeChange > 0n) {
-    if (hasTokenChange) {
-      const tokenChangeScript = buildTokenChangeOutput(parseAddress(params.changeAddress, 'changeAddress'), selection.currencyChanges);
-      txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
-    } else if (params.changeAddress.startsWith('i')) {
-      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-      // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-      // it throws an untyped "no matching Script".
-      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
-    } else {
-      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
-    }
-  }
-
-  // Referral payouts are native; no token is paid out, so all token value in the
-  // selected inputs must return as change.
-  assertTokenConservation(
-    selection.selected,
-    new Map(),
-    selection.currencyChanges,
-    systemId,
-    'identity registration',
-  );
-
-  const unsignedTx = txb.buildIncomplete();
-  const allUtxos: Utxo[] = [commitUtxo, ...selection.selected];
-
-  // The registration fee is burned as an IMPLICIT miner fee (identity and
-  // reservation outputs carry 0; referral payouts come out of the total) —
-  // this matches on-chain registrations, and the daemon exempts recognized
-  // identity definitions from its absurd-fee check (IS_HIGH_FEE). utxo-lib's
-  // client-side fee-rate cap (default 2500 sat/vbyte) must be told the
-  // intended absolute fee or build() throws "Transaction has absurd fees".
-  const expectedImplicitFee =
-    commitUtxo.satoshis + requiredNative - totalReferralPayments + selection.fee;
-
-  // Independent value-conservation check on the assembled transaction: recompute
-  // the native fee straight from inputs and outputs and require it to equal the
-  // fee this path intends to pay. buildAndSign has the same guard; registration
-  // moves the largest amounts (the registration fee is burned as implicit fee),
-  // so a selection/accounting slip must fail loudly here instead of being paid
-  // to miners.
-  const assembledNativeFee =
-    allUtxos.reduce((sum, u) => sum + u.satoshis, 0n) -
-    unsignedTx.outs.reduce((sum: bigint, o: { value: number }) => sum + BigInt(o.value), 0n);
-  if (assembledNativeFee !== expectedImplicitFee) {
-    throw new TransactionBuildError(
-      `identity registration value conservation failed: assembled native fee ${assembledNativeFee} sat ` +
-        `!= intended ${expectedImplicitFee} sat`,
-    );
-  }
-
-  const { signedTx, txid } = signTransactionSmart(
-    unsignedTx.toHex(),
-    params.wif,
-    allUtxos,
+  // The identity and reservation outputs carry 0 native; the referral payouts are
+  // the only value-bearing outputs. The rest of the outlay is a DECLARED burn, so
+  // the assembler funds it, sizes the fee cap for it, and enforces conservation.
+  const assembled = assembleAndSign({
     network,
-    expectedImplicitFee,
-  );
+    wif: params.wif,
+    expiryHeight: params.expiryHeight,
+    funding: params.utxos,
+    // The name-commitment output is spent as input 0 (it carries no currency).
+    leadingInputs: [params.commitmentUtxo],
+    outputs: [
+      { script: identityScript, nativeSat: 0n },
+      ...referralOutputs.map((o) => ({ script: o.script, nativeSat: o.value })),
+      { script: reservationScript, nativeSat: 0n },
+    ],
+    changeAddress: params.changeAddress,
+    // Legacy fee estimate: identity + referrals + reservation, plus the one extra
+    // change slot the original path counted on top of selectUtxos' own reserve.
+    feeOutputCount: 2 + referralOutputs.length + 1,
+    fee: {
+      policy: 'declared',
+      burnSat: registrationOutlay - totalReferralPayments,
+      reason: 'identity registration fee (burned as implicit miner fee)',
+    },
+    label: 'identity registration',
+  });
 
   return {
-    signedTx,
-    txid,
-    fee: selection.fee,
+    signedTx: assembled.signedTx,
+    txid: assembled.txid,
+    fee: assembled.fee,
     identityAddress,
     // The registrant's registration outlay: the discounted issuer fee when
     // referred, the full fee otherwise. (Of this, referralPayments go to the
     // referrers and the remainder is the implicit miner fee.)
-    registrationFee: requiredNative,
+    registrationFee: registrationOutlay,
     referralPayments: referralOutputs.length,
     referralAmountEach: fees.referralAmount,
-    inputsUsed: allUtxos.length,
-    nativeChange: selection.nativeChange,
+    inputsUsed: assembled.inputsUsed,
+    nativeChange: assembled.nativeChange,
   };
 }
 
