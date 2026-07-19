@@ -291,6 +291,34 @@ describe('identity', () => {
     });
   });
 
+  describe('token-change safety on the commitment funding path', () => {
+    it('returns token value as change when a token-bearing UTXO funds a commitment (never burns it)', () => {
+      const TOKEN = deriveIdentityAddress('burntok', SYSTEM_ID);
+      const tokenAmount = 500_000_000n; // 5.0 tokens
+      // A reserve-output UTXO carrying tokens AND native value — the only funding
+      // available, so selectUtxos must pull it for the fee.
+      const reserveScript = buildTokenChangeOutput(TEST_ADDR, new Map([[TOKEN, tokenAmount]])).script;
+      const mixedUtxo = {
+        txid: 'cd'.repeat(32),
+        outputIndex: 0,
+        satoshis: 100_000_000n, // 1.0 native to cover the fee
+        script: reserveScript.toString('hex'),
+      };
+
+      const result = buildAndSignCommitment(
+        { wif: TEST_WIF, name: 'burntest', utxos: [mixedUtxo], changeAddress: TEST_ADDR, expiryHeight: 0 },
+        'testnet',
+      );
+
+      // The signed tx must carry a reserve-output change output holding the full
+      // token amount — its script equals a token-change output for that amount.
+      const expectedTokenChange = buildTokenChangeOutput(TEST_ADDR, new Map([[TOKEN, tokenAmount]])).script.toString('hex');
+      const tx = Transaction.fromHex(result.signedTx, getNetwork(true));
+      const scripts = tx.outs.map((o: { script: Buffer }) => Buffer.from(o.script).toString('hex'));
+      expect(scripts).toContain(expectedTokenChange);
+    });
+  });
+
   describe('createIdentityObject', () => {
     it('should create a valid Identity', () => {
       const identity = createIdentityObject({

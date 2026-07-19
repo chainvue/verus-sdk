@@ -647,16 +647,34 @@ export function buildAndSignCommitment(
 
   txb.addOutput(commitment.commitmentScript, 0);
 
-  if (selection.nativeChange > 0n) {
-    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-    // it throws an untyped "no matching Script".
-    if (params.changeAddress.startsWith('i')) {
+  // If native-only UTXOs can't cover the fee, selectUtxos falls back to a
+  // token-bearing UTXO and returns its token value as currencyChanges. Emit it
+  // as a reserve-output change (bundled with the native change) — otherwise
+  // that token value is silently forfeited to the miner.
+  const hasTokenChange = selection.currencyChanges.size > 0;
+  if (hasTokenChange || selection.nativeChange > 0n) {
+    if (hasTokenChange) {
+      const tokenChangeScript = buildTokenChangeOutput(params.changeAddress, selection.currencyChanges);
+      txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
+    } else if (params.changeAddress.startsWith('i')) {
+      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+      // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+      // it throws an untyped "no matching Script".
       txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
   }
+
+  // No token is paid out here (the commitment output carries none), so every
+  // token in the selected inputs must return as change.
+  assertTokenConservation(
+    selection.selected,
+    new Map(),
+    selection.currencyChanges,
+    networkConfig.chainId,
+    'name commitment',
+  );
 
   const unsignedTx = txb.buildIncomplete();
   const { signedTx, txid } = signTransactionSmart(
@@ -826,16 +844,34 @@ function _buildVrscRegistration(
 
   txb.addOutput(reservationScript, 0);
 
-  if (selection.nativeChange > 0n) {
-    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-    // it throws an untyped "no matching Script".
-    if (params.changeAddress.startsWith('i')) {
+  // Registration needs ~80-100 native, so Phase-2 selection is especially
+  // likely to exhaust pure-native UTXOs and pull a token-bearing one; return
+  // its token value as reserve-output change instead of forfeiting it to the
+  // miner. (The commitment input carries no currency.)
+  const hasTokenChange = selection.currencyChanges.size > 0;
+  if (hasTokenChange || selection.nativeChange > 0n) {
+    if (hasTokenChange) {
+      const tokenChangeScript = buildTokenChangeOutput(params.changeAddress, selection.currencyChanges);
+      txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
+    } else if (params.changeAddress.startsWith('i')) {
+      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
+      // changeAddress needs the explicit P2ID script (matching sendCurrency), or
+      // it throws an untyped "no matching Script".
       txb.addOutput(identityPaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
     } else {
       txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
     }
   }
+
+  // Referral payouts are native; no token is paid out, so all token value in the
+  // selected inputs must return as change.
+  assertTokenConservation(
+    selection.selected,
+    new Map(),
+    selection.currencyChanges,
+    systemId,
+    'identity registration',
+  );
 
   const unsignedTx = txb.buildIncomplete();
   const allUtxos: Utxo[] = [commitUtxo, ...selection.selected];
