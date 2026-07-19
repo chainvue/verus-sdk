@@ -242,7 +242,18 @@ export interface LockIdentityParams {
   wif: string;
   identityHex: string;
   identityUtxo: Utxo;
-  unlockAfter: number;
+  /**
+   * Lock duration as a RELATIVE delay in blocks (NOT an absolute block height).
+   * The daemon stores this value verbatim as the unlock delay; when an unlock is
+   * later started, the identity stays locked for this many blocks past the
+   * unlock transaction. e.g. ~1 day ≈ 1440 blocks. Must be > 0 and at most
+   * MAX_UNLOCK_DELAY (11,563,200 ≈ 22 years). A common mistake is passing a
+   * block height (millions) intending "until block X" — that locks the identity
+   * for years; values above LOCK_DELAY_SANITY_BLOCKS require sanityOverride.
+   */
+  unlockDelayBlocks: number;
+  /** Opt in to a delay above LOCK_DELAY_SANITY_BLOCKS (~1 year). */
+  sanityOverride?: boolean;
   utxos: Utxo[];
   changeAddress: string;
   expiryHeight: number;

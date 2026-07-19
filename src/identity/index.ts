@@ -67,6 +67,11 @@ const NULL_ID_HASH = Buffer.alloc(HASH160_BYTE_LENGTH, 0);
 /** Eval code for CAdvancedNameReservation (sub-ID) */
 const EVAL_IDENTITY_ADVANCEDRESERVATION = 10;
 
+/** Consensus maximum identity unlock delay (blocks) — CIdentity::MAX_UNLOCK_DELAY, ~22 years. */
+const MAX_UNLOCK_DELAY = 11_563_200;
+/** ~1 year of blocks (1 block/min); a lock delay above this needs an explicit opt-in. */
+const LOCK_DELAY_SANITY_BLOCKS = 525_600;
+
 // ─── Script / Hash Builders ────────────────────────────────────────
 
 /**
@@ -1085,7 +1090,7 @@ export function buildAndSignIdentityUpdate(
   params: UpdateIdentityParams,
   network: Network,
   operation: 'update' | 'revoke' | 'recover' | 'lock' | 'unlock' = 'update',
-  lockUnlockParams?: { unlockAfter?: number }
+  lockUnlockParams?: { unlockDelayBlocks?: number; sanityOverride?: boolean }
 ): UpdateIdentityResult {
   validateIdentityWif(params.wif);
   if (!params.identityHex) {
@@ -1226,11 +1231,26 @@ export function buildAndSignIdentityUpdate(
       break;
     }
     case 'lock': {
-      const unlockAfter = lockUnlockParams?.unlockAfter;
-      if (!unlockAfter) {
-        throw new TransactionBuildError('unlockAfter (block height) is required for lock operation');
+      const delay = lockUnlockParams?.unlockDelayBlocks;
+      if (delay === undefined || !Number.isInteger(delay) || delay <= 0) {
+        throw new TransactionBuildError(
+          'unlockDelayBlocks (a positive integer RELATIVE delay in blocks, not a block height) is required for lock',
+        );
       }
-      identity.lock(new BN(unlockAfter));
+      if (delay > MAX_UNLOCK_DELAY) {
+        throw new TransactionBuildError(
+          `unlockDelayBlocks ${delay} exceeds the consensus maximum ${MAX_UNLOCK_DELAY} (~22 years)`,
+        );
+      }
+      // A block height (millions) passed as a delay locks the identity for years.
+      // Require an explicit opt-in above ~1 year to catch that mistake.
+      if (delay > LOCK_DELAY_SANITY_BLOCKS && !lockUnlockParams?.sanityOverride) {
+        throw new TransactionBuildError(
+          `unlockDelayBlocks ${delay} is over ~1 year (${LOCK_DELAY_SANITY_BLOCKS} blocks) — this is a RELATIVE ` +
+            `delay, not a block height; pass sanityOverride: true if that long a lock is intended.`,
+        );
+      }
+      identity.lock(new BN(delay));
       break;
     }
     case 'unlock': {
