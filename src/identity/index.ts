@@ -32,10 +32,9 @@ import {
   nameAndParentAddrToIAddr,
   fromBase58Check,
 } from '../fork/boundary.js';
-import { TransactionBuilder, Transaction, smarttxs, ECPair } from '../fork/boundary.js';
+import { Transaction, smarttxs, ECPair } from '../fork/boundary.js';
 import {
   NETWORK_CONFIG,
-  VERSION_GROUP_ID,
   DEFAULT_REGISTRATION_FEE,
   DEFAULT_REFERRAL_LEVELS,
   PUBKEY_HASH_PREFIX,
@@ -44,15 +43,14 @@ import {
   RESERVE_TRANSFER_EVAL_PKH,
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber, addressToScriptPubKey } from '../utils/index.js';
-import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
-import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
+import { sha256d, writeCompactSize, iAddressToHash, addressToScriptPubKey } from '../utils/index.js';
+import { getNetwork, resolveExpiryHeight, type VerusNetwork } from '../signing/index.js';
 import { assembleAndSign } from '../assemble/assembler.js';
+import { assembleFundedIdentityUpdate } from '../assemble/fundedIdentityUpdate.js';
 import { parseIAddress, parseRAddress, isIAddress, isRAddress, type IAddress, type RAddress, type Address } from '../core/brands.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
 import type {
-  Utxo,
   CreateCommitmentParams,
   CreateCommitmentResult,
   RegisterIdentityParams,
@@ -61,7 +59,7 @@ import type {
   UpdateIdentityResult,
 } from '../types/index.js';
 
-const { createUnfundedIdentityUpdate, completeFundedIdentityUpdate } = smarttxs;
+const { createUnfundedIdentityUpdate } = smarttxs;
 
 // Re-export for convenience
 export { nameAndParentAddrToIAddr };
@@ -1000,8 +998,6 @@ export function buildAndSignIdentityUpdate(
     throw new TransactionBuildError('At least one funding UTXO is required');
   }
   const verusNetwork = getNetwork(network === 'testnet');
-  const networkConfig = NETWORK_CONFIG[network];
-  const systemId = networkConfig.chainId;
 
   const identity = new Identity();
   identity.fromBuffer(Buffer.from(params.identityHex, 'hex'));
@@ -1196,111 +1192,33 @@ export function buildAndSignIdentityUpdate(
     verusNetwork,
     resolveExpiryHeight(params.expiryHeight),
   );
-
-  const selection = selectUtxos(
-    params.utxos,
-    0n,
-    new Map(),
-    1,
-    systemId,
-    undefined,
-    true,
-    // The identity output embeds the full serialized identity (a large
-    // contentMultimap can make it multi-KB); size the fee from its real bytes
-    // so a big update isn't fee-estimated below the relay minimum.
-    unfundedHex.length / 2,
-  );
-
-  // Update spends only native fees and emits no token-change output, so a
-  // token-bearing funding UTXO would be silently dropped. Fail closed if one
-  // was selected (both maps empty ⇒ assert no token enters).
-  assertTokenConservation(
-    selection.selected,
-    new Map(),
-    new Map(),
-    systemId,
-    'identity update',
-  );
-
-  const txb = new TransactionBuilder(verusNetwork);
-  txb.setVersion(4);
-  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
-  txb.setVersionGroupId(VERSION_GROUP_ID);
-
-  for (const utxo of selection.selected) {
-    txb.addInput(
-      Buffer.from(utxo.txid, 'hex').reverse(),
-      utxo.outputIndex,
-      0xffffffff,
-      Buffer.from(utxo.script, 'hex'),
-    );
-  }
-
   const unfundedTx = Transaction.fromHex(unfundedHex, verusNetwork);
-  for (const out of unfundedTx.outs) {
-    txb.addOutput(out.script, out.value);
-  }
 
-  if (selection.nativeChange > 0n) {
-    // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-    // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-    // it throws an untyped "no matching Script".
-    if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
-    } else {
-      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
-    }
-  }
-
-  const fundedTx = txb.buildIncomplete();
-  const fundedHex = fundedTx.toHex();
-
-  const prevOutScripts = selection.selected.map(u => Buffer.from(u.script, 'hex'));
-  const idUtxo = params.identityUtxo;
-  // The identity input is spent and its definition output is recreated with
-  // value 0, so any native value riding on identityUtxo would be silently
-  // burned to miner fee. Identity outputs normally carry 0; fail closed if not.
-  if (idUtxo.satoshis !== 0n) {
-    throw new TransactionBuildError(
-      `identityUtxo carries ${idUtxo.satoshis} native satoshis, which would be burned to miner fee ` +
-        `(the recreated identity output is value 0). Spend that value separately before updating.`,
-    );
-  }
-  const completedHex = completeFundedIdentityUpdate(
-    fundedHex,
-    verusNetwork,
-    prevOutScripts,
-    {
-      hash: Buffer.from(idUtxo.txid, 'hex').reverse(),
-      index: idUtxo.outputIndex,
-      sequence: 0xffffffff,
-      script: Buffer.from(idUtxo.script, 'hex'),
-    },
-  );
-
-  const allUtxos: Utxo[] = [...selection.selected, idUtxo];
-  // The identity input and its recreated output are both value 0, so the
-  // assembled native fee must equal selection.fee. Fail loudly on any slip.
-  assertNativeConservation(
-    allUtxos,
-    Transaction.fromHex(completedHex, verusNetwork).outs,
-    selection.fee,
-    `identity ${operation}`,
-  );
-  const { signedTx, txid } = signTransactionSmart(
-    completedHex,
-    params.wif,
-    allUtxos,
-    verusNetwork,
-  );
+  // Respend the identity UTXO and recreate its (value-0) definition output; the
+  // shared assembler funds it, emits native change, grafts on the identity input
+  // (re-signed last by the fork), and enforces native + token conservation.
+  const assembled = assembleFundedIdentityUpdate({
+    network,
+    wif: params.wif,
+    expiryHeight: params.expiryHeight,
+    funding: params.utxos,
+    identityUtxo: params.identityUtxo,
+    outputs: unfundedTx.outs.map((o) => ({ script: o.script, nativeSat: BigInt(o.value) })),
+    changeAddress: params.changeAddress,
+    // The identity output embeds the full serialized identity (a large
+    // contentMultimap can make it multi-KB); size the fee from the unfunded tx's
+    // real bytes so a big update isn't fee-estimated below the relay minimum.
+    extraOutputBytes: unfundedHex.length / 2,
+    label: `identity ${operation}`,
+  });
 
   return {
-    signedTx,
-    txid,
-    fee: selection.fee,
+    signedTx: assembled.signedTx,
+    txid: assembled.txid,
+    fee: assembled.fee,
     identityAddress: identity.getIdentityAddress(),
     operation,
-    inputsUsed: allUtxos.length,
-    nativeChange: selection.nativeChange,
+    inputsUsed: assembled.inputsUsed,
+    nativeChange: assembled.nativeChange,
   };
 }
