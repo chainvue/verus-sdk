@@ -1130,6 +1130,19 @@ export function buildAndSignIdentityUpdate(
           `[${currentPrimaries.join(', ')}]; it cannot authorize a ${operation}.`,
       );
     }
+    // Spending the identity input under primary authority needs min_sigs
+    // signatures, but this SDK signs with a single WIF and the bundled fork
+    // cannot attach a second signature to a CryptoCondition input. Emitting a
+    // 1-of-N-signed tx for a min_sigs>1 identity yields a hex the daemon rejects
+    // at broadcast; fail closed instead.
+    const currentMinSigs = identity.min_sigs?.toNumber?.() ?? 1;
+    if (currentMinSigs > 1) {
+      throw new TransactionBuildError(
+        `this identity requires ${currentMinSigs} signatures (min_sigs > 1); the SDK signs with a single ` +
+          `WIF and the bundled fork cannot multi-sign a CryptoCondition input, so a valid ${operation} ` +
+          `transaction cannot be produced. Use the daemon for multisig identities.`,
+      );
+    }
   }
 
   switch (operation) {
@@ -1197,6 +1210,13 @@ export function buildAndSignIdentityUpdate(
       if (params.primaryAddresses) {
         identity.setPrimaryAddresses(params.primaryAddresses);
       }
+      // Recovery commonly replaces the primary set; allow lowering min_sigs so a
+      // 2-of-2 identity can be recovered to a single fresh key (otherwise the
+      // stale min_sigs would exceed the new primary count — see the guard below).
+      if (params.minSigs !== undefined) {
+        validateMinSigs(params.minSigs, identity.primary_addresses?.length ?? 0);
+        identity.min_sigs = new BN(params.minSigs);
+      }
       if (params.revocationAuthority) {
         identity.setRevocation(params.revocationAuthority);
       }
@@ -1228,6 +1248,18 @@ export function buildAndSignIdentityUpdate(
       identity.unlock(new BN(0), new BN(unlockExpiry));
       break;
     }
+  }
+
+  // A valid identity always has min_sigs <= number of primary addresses. Shrinking
+  // the primary set (update/recover) without lowering minSigs would leave a stale
+  // min_sigs the daemon rejects — or, worse, a permanently unspendable identity.
+  const finalPrimaries = identity.primary_addresses?.length ?? 0;
+  const finalMinSigs = identity.min_sigs?.toNumber?.() ?? 1;
+  if (finalMinSigs > finalPrimaries) {
+    throw new TransactionBuildError(
+      `resulting identity has min_sigs ${finalMinSigs} but only ${finalPrimaries} primary address(es); ` +
+        `pass minSigs to lower it when reducing the primary set.`,
+    );
   }
 
   const identityBuf = identity.toBuffer();
