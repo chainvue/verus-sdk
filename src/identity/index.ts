@@ -47,6 +47,7 @@ import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber, addressToScriptPubKey } from '../utils/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
+import { assembleAndSign } from '../assemble/assembler.js';
 import { parseIAddress, parseRAddress, parseAddress, isIAddress, isRAddress, type IAddress, type RAddress, type Address } from '../core/brands.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
@@ -675,7 +676,6 @@ export function buildAndSignCommitment(
     throw new TransactionBuildError('At least one UTXO is required');
   }
   const verusNetwork = getNetwork(network === 'testnet');
-  const networkConfig = NETWORK_CONFIG[network];
 
   // The commitment output is controlled by, and must be spent by, the key that
   // completes the registration in step 2 — which signs with this same WIF. Using
@@ -693,79 +693,23 @@ export function buildAndSignCommitment(
     params.salt,
   );
 
-  const utxos = params.utxos;
-  const selection = selectUtxos(
-    utxos,
-    0n,
-    new Map(),
-    1,
-    networkConfig.chainId,
-    undefined,
-    true,
-  );
-
-  const txb = new TransactionBuilder(verusNetwork);
-  txb.setVersion(4);
-  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
-  txb.setVersionGroupId(VERSION_GROUP_ID);
-
-  for (const utxo of selection.selected) {
-    txb.addInput(
-      Buffer.from(utxo.txid, 'hex').reverse(),
-      utxo.outputIndex,
-      0xffffffff,
-      Buffer.from(utxo.script, 'hex'),
-    );
-  }
-
-  txb.addOutput(commitment.commitmentScript, 0);
-
-  // If native-only UTXOs can't cover the fee, selectUtxos falls back to a
-  // token-bearing UTXO and returns its token value as currencyChanges. Emit it
-  // as a reserve-output change (bundled with the native change) — otherwise
-  // that token value is silently forfeited to the miner.
-  const hasTokenChange = selection.currencyChanges.size > 0;
-  if (hasTokenChange || selection.nativeChange > 0n) {
-    if (hasTokenChange) {
-      const tokenChangeScript = buildTokenChangeOutput(parseAddress(params.changeAddress, 'changeAddress'), selection.currencyChanges);
-      txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
-    } else if (params.changeAddress.startsWith('i')) {
-      // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
-      // changeAddress needs the explicit P2ID script (matching sendCurrency), or
-      // it throws an untyped "no matching Script".
-      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
-    } else {
-      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
-    }
-  }
-
-  // No token is paid out here (the commitment output carries none), so every
-  // token in the selected inputs must return as change.
-  assertTokenConservation(
-    selection.selected,
-    new Map(),
-    selection.currencyChanges,
-    networkConfig.chainId,
-    'name commitment',
-  );
-
-  const unsignedTx = txb.buildIncomplete();
-  // Native value conservation: the commitment output is 0 and change is native,
-  // so the assembled native fee must equal selection.fee. The fork's absurd-fee
-  // guard is blind for inputs > 2^32 sats (it truncates input value mod 2^32),
-  // so this bigint check is the real backstop against a change-accounting slip.
-  assertNativeConservation(selection.selected, unsignedTx.outs, selection.fee, 'name commitment');
-  const { signedTx, txid } = signTransactionSmart(
-    unsignedTx.toHex(),
-    params.wif,
-    selection.selected,
-    verusNetwork,
-  );
+  // The commitment output carries no token and no native value; the assembler
+  // selects funding, emits change, and enforces conservation by construction.
+  const assembled = assembleAndSign({
+    network,
+    wif: params.wif,
+    expiryHeight: params.expiryHeight,
+    funding: params.utxos,
+    outputs: [{ script: commitment.commitmentScript, nativeSat: 0n }],
+    changeAddress: params.changeAddress,
+    fee: { policy: 'estimate' },
+    label: 'name commitment',
+  });
 
   return {
-    signedTx,
-    txid,
-    fee: selection.fee,
+    signedTx: assembled.signedTx,
+    txid: assembled.txid,
+    fee: assembled.fee,
     identityAddress: commitment.identityAddress,
     commitmentData: {
       name: params.name,
