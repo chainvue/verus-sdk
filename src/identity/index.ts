@@ -40,7 +40,7 @@ import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
-import { parseIAddress, parseRAddress, type IAddress, type RAddress } from '../core/brands.js';
+import { parseIAddress, parseRAddress, parseAddress, isIAddress, isRAddress, type IAddress, type RAddress, type Address } from '../core/brands.js';
 import { InvalidWifError, InvalidNameError, TransactionBuildError } from '../errors.js';
 import { validateWif } from '../keys/index.js';
 import type {
@@ -511,30 +511,28 @@ export function buildRegistrationFeeOutput(
   _controlAddress: string,
 ): { script: Buffer; nativeValue: bigint } {
   void systemId;
-  return buildTokenChangeOutput(parentCurrencyId, new Map([[parentCurrencyId, feeAmount]]));
+  return buildTokenChangeOutput(parseIAddress(parentCurrencyId, 'parentCurrencyId'), new Map([[parentCurrencyId, feeAmount]]));
 }
 
 /**
  * Build a token change output (EVAL_RESERVE_OUTPUT)
  */
 export function buildTokenChangeOutput(
-  changeAddress: string,
+  changeAddress: Address,
   currencyChanges: Map<string, bigint>,
 ): { script: Buffer; nativeValue: bigint } {
-  // KeyID.fromAddress launders any address to the R-address form, so token
-  // change to an i-address changeAddress was paid to a transparent script
-  // nobody controls (burned on paths with no funded-transfer validator). Build
-  // a pay-to-identity destination for i-addresses, and reject anything that is
-  // neither an R- nor an i-address rather than silently mis-routing it.
-  const version = fromBase58Check(changeAddress).version;
+  // The brand guarantees the version; narrow it to pick the destination form.
+  // A pay-to-identity destination for i-addresses (KeyID.fromAddress would
+  // launder an i-address to a transparent script nobody controls), a KeyID for
+  // R-addresses, and reject a P2SH address (not a valid reserve destination).
   let destination: InstanceType<typeof TxDestination>;
-  if (version === I_ADDR_VERSION) {
+  if (isIAddress(changeAddress)) {
     destination = new TxDestination(IdentityID.fromAddress(changeAddress));
-  } else if (version === PUBKEY_HASH_PREFIX) {
+  } else if (isRAddress(changeAddress)) {
     destination = new TxDestination(KeyID.fromAddress(changeAddress));
   } else {
     throw new TransactionBuildError(
-      `token change address must be an R-address or identity i-address, got version ${version}: ${changeAddress}`,
+      `token change address must be an R-address or identity i-address, got: ${changeAddress}`,
     );
   }
 
@@ -664,7 +662,7 @@ export function buildAndSignCommitment(
   const hasTokenChange = selection.currencyChanges.size > 0;
   if (hasTokenChange || selection.nativeChange > 0n) {
     if (hasTokenChange) {
-      const tokenChangeScript = buildTokenChangeOutput(params.changeAddress, selection.currencyChanges);
+      const tokenChangeScript = buildTokenChangeOutput(parseAddress(params.changeAddress, 'changeAddress'), selection.currencyChanges);
       txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
     } else if (params.changeAddress.startsWith('i')) {
       // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
@@ -861,7 +859,7 @@ function _buildVrscRegistration(
   const hasTokenChange = selection.currencyChanges.size > 0;
   if (hasTokenChange || selection.nativeChange > 0n) {
     if (hasTokenChange) {
-      const tokenChangeScript = buildTokenChangeOutput(params.changeAddress, selection.currencyChanges);
+      const tokenChangeScript = buildTokenChangeOutput(parseAddress(params.changeAddress, 'changeAddress'), selection.currencyChanges);
       txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));
     } else if (params.changeAddress.startsWith('i')) {
       // utxo-lib's addOutput only resolves base58 R-addresses; an i-address
@@ -1024,7 +1022,7 @@ function _buildSubIdRegistration(
   if (hasTokenChange || selection.nativeChange > 0n) {
     if (hasTokenChange) {
       const tokenChangeScript = buildTokenChangeOutput(
-        params.changeAddress,
+        parseAddress(params.changeAddress, 'changeAddress'),
         selection.currencyChanges,
       );
       txb.addOutput(tokenChangeScript.script, toSafeNumber(selection.nativeChange));

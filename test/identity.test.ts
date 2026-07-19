@@ -21,7 +21,7 @@ import {
   buildTokenChangeOutput,
 } from '../src/identity/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
-import { parseIAddress, parseRAddress } from '../src/core/brands.js';
+import { parseIAddress, parseRAddress, parseAddress } from '../src/core/brands.js';
 import { getNetwork } from '../src/signing/index.js';
 import { NETWORK_CONFIG, DEFAULT_REGISTRATION_FEE } from '../src/constants/index.js';
 
@@ -157,7 +157,7 @@ describe('identity', () => {
 
     it('is a reserve output of the fee token at the parent currency address', () => {
       const fee = buildRegistrationFeeOutput(parent, feeAmount, SYSTEM_ID, TEST_ADDR);
-      const equivalent = buildTokenChangeOutput(parent, new Map([[parent, feeAmount]]));
+      const equivalent = buildTokenChangeOutput(parseAddress(parent), new Map([[parent, feeAmount]]));
       expect(fee.script.toString('hex')).toBe(equivalent.script.toString('hex'));
     });
   });
@@ -308,7 +308,7 @@ describe('identity', () => {
       const tokenAmount = 500_000_000n; // 5.0 tokens
       // A reserve-output UTXO carrying tokens AND native value — the only funding
       // available, so selectUtxos must pull it for the fee.
-      const reserveScript = buildTokenChangeOutput(TEST_ADDR, new Map([[TOKEN, tokenAmount]])).script;
+      const reserveScript = buildTokenChangeOutput(parseAddress(TEST_ADDR), new Map([[TOKEN, tokenAmount]])).script;
       const mixedUtxo = {
         txid: 'cd'.repeat(32),
         outputIndex: 0,
@@ -323,7 +323,7 @@ describe('identity', () => {
 
       // The signed tx must carry a reserve-output change output holding the full
       // token amount — its script equals a token-change output for that amount.
-      const expectedTokenChange = buildTokenChangeOutput(TEST_ADDR, new Map([[TOKEN, tokenAmount]])).script.toString('hex');
+      const expectedTokenChange = buildTokenChangeOutput(parseAddress(TEST_ADDR), new Map([[TOKEN, tokenAmount]])).script.toString('hex');
       const tx = Transaction.fromHex(result.signedTx, getNetwork(true));
       const scripts = tx.outs.map((o: { script: Buffer }) => Buffer.from(o.script).toString('hex'));
       expect(scripts).toContain(expectedTokenChange);

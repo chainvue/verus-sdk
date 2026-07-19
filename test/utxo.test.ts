@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { selectUtxos, estimateFee, assertTokenConservation } from '../src/utxo/index.js';
 import { buildTokenChangeOutput, deriveIdentityAddress } from '../src/identity/index.js';
+import { parseAddress } from '../src/core/brands.js';
 import { NETWORK_CONFIG } from '../src/constants/index.js';
 import { TransactionBuildError } from '../src/errors.js';
 import type { Utxo } from '../src/types/index.js';
@@ -11,7 +12,7 @@ const R_ADDR = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';
 
 /** A reserve-output UTXO carrying `amount` of TOKEN_CURRENCY, zero native. */
 function tokenUtxo(amount: bigint, index: number): Utxo {
-  const { script } = buildTokenChangeOutput(R_ADDR, new Map([[TOKEN_CURRENCY, amount]]));
+  const { script } = buildTokenChangeOutput(parseAddress(R_ADDR), new Map([[TOKEN_CURRENCY, amount]]));
   return {
     txid: Buffer.alloc(32, index).toString('hex'),
     outputIndex: 0,
