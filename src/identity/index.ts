@@ -275,6 +275,14 @@ export function deriveIdentityAddress(
   name: string,
   parentIAddress?: string
 ): string {
+  // nameAndParentAddrToIAddr hashes fromBase58Check(parent).hash regardless of
+  // version, so an R-address parent is laundered into an identity-versioned hash
+  // that names no real currency. The derived i-address then looks valid but can
+  // never be registered — funds paid to it (pay-to-unregistered-identity) burn,
+  // and a name commitment built with it wastes its fee. Require an i-address.
+  if (parentIAddress) {
+    assertAddressVersion(parentIAddress, I_ADDR_VERSION, 'parent');
+  }
   return nameAndParentAddrToIAddr(name, parentIAddress || undefined);
 }
 
