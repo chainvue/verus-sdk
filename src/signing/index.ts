@@ -172,14 +172,17 @@ export function signTransactionMultiKey(
  * Create a new TransactionBuilder for manual transaction construction
  */
 export function createTransactionBuilder(
-  network: VerusNetwork = networks.verus,
-  expiryHeight: number = 0,
+  network: VerusNetwork,
+  expiryHeight: number,
   version: number = 4,
   versionGroupId: number = VERSION_GROUP_ID
 ): InstanceType<typeof TransactionBuilder> {
   const txb = new TransactionBuilder(network);
   txb.setVersion(version);
-  txb.setExpiryHeight(expiryHeight);
+  // Route through resolveExpiryHeight so this low-level builder can't silently
+  // produce a never-expiring transaction: expiryHeight is required (0 must be an
+  // explicit opt-in), and a timestamp-sized value is rejected.
+  txb.setExpiryHeight(resolveExpiryHeight(expiryHeight));
   txb.setVersionGroupId(versionGroupId);
   return txb;
 }
