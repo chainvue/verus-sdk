@@ -986,7 +986,17 @@ function _buildSubIdRegistration(
     [parentIAddress, registrationFeeAmount],
   ]);
 
-  const nativeImportFee = params.nativeImportFee || 0n;
+  // The parent currency's idimportfees must leave the transaction as native fee;
+  // this SDK is offline and cannot read it, so the caller must pass it explicitly.
+  // Silently defaulting to 0 underfunds a currency that charges an import fee, and
+  // the daemon rejects the registration.
+  if (params.nativeImportFee === undefined) {
+    throw new TransactionBuildError(
+      "nativeImportFee is required for sub-ID registration: pass the parent currency's idimportfees " +
+        '(from `getcurrency <parent>`), or 0n if it charges none.',
+    );
+  }
+  const nativeImportFee = params.nativeImportFee;
   const nativeTarget = feeOutput.nativeValue + nativeImportFee;
 
   const numOutputs = 4;
