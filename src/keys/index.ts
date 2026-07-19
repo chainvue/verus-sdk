@@ -47,6 +47,11 @@ export function validateWif(wif: string): { valid: boolean; error?: string } {
  * Extract private key bytes from WIF
  */
 export function wifToPrivateKey(wif: string): Buffer {
+  // Validate the Verus version byte / length / compression flag first; a raw
+  // bs58check.decode accepts a Bitcoin (0x80) WIF and returns key bytes for a
+  // non-Verus key with no error.
+  const check = validateWif(wif);
+  if (!check.valid) throw new InvalidWifError(check.error);
   const decoded = bs58check.decode(wif);
 
   // Remove prefix byte and optional compression flag
@@ -63,6 +68,8 @@ export function wifToPrivateKey(wif: string): Buffer {
  * Check if WIF indicates compressed public key
  */
 export function isCompressedWif(wif: string): boolean {
+  const check = validateWif(wif);
+  if (!check.valid) throw new InvalidWifError(check.error);
   const decoded = bs58check.decode(wif);
   return decoded.length === 34 && decoded[33] === 0x01;
 }
