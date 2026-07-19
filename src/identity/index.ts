@@ -37,7 +37,7 @@ import {
   I_ADDR_VERSION,
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber } from '../utils/index.js';
+import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber, addressToScriptPubKey } from '../utils/index.js';
 import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation, type VerusNetwork } from '../signing/index.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
 import { parseIAddress, parseRAddress, parseAddress, isIAddress, isRAddress, type IAddress, type RAddress, type Address } from '../core/brands.js';
@@ -735,6 +735,20 @@ export function buildAndSignRegistration(
   const verusNetwork = getNetwork(network === 'testnet');
   const networkConfig = NETWORK_CONFIG[network];
   const systemId = networkConfig.chainId;
+
+  // Step 2 spends the name-commitment output, which is controlled by the key that
+  // created it in step 1. The fork signs the commitment input with whatever WIF it
+  // is handed, so a mismatched WIF produces a tx the daemon rejects at broadcast
+  // (and the commitment fee is wasted). Verify the WIF's hash is the commitment's
+  // control hash up front. (The 20-byte control hash is embedded in the CC script.)
+  const signerAddr = (ECPair.fromWIF(params.wif, verusNetwork) as { getAddress(): string }).getAddress();
+  const signerHash = addressToScriptPubKey(signerAddr).subarray(3, 23).toString('hex');
+  if (!params.commitmentUtxo.script.toLowerCase().includes(signerHash)) {
+    throw new TransactionBuildError(
+      `the provided WIF (${signerAddr}) does not control the name-commitment output; step 2 must be ` +
+        `signed by the same key that created the commitment in step 1.`,
+    );
+  }
 
   const commitData = params.commitmentData;
   const parentIAddress = commitData.parent || systemId;
