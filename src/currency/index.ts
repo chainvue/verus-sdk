@@ -14,21 +14,17 @@
 export { classifyCurrency, CURRENCY_TYPE_ORDER } from './classify.js';
 export type { CurrencyType } from './classify.js';
 
-import { TransactionBuilder, Transaction, smarttxs } from '../fork/boundary.js';
 import { Identity, IdentityScript } from '../fork/boundary.js';
 import BN from 'bn.js';
-import { NETWORK_CONFIG, VERSION_GROUP_ID, IDENTITY_FLAG_ACTIVECURRENCY } from '../constants/index.js';
+import { IDENTITY_FLAG_ACTIVECURRENCY } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
-import { signTransactionSmart, getNetwork, resolveExpiryHeight, assertNativeConservation } from '../signing/index.js';
-import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
-import { toSafeNumber } from '../utils/index.js';
-import { identityPaymentScript, assertWifIsPrimary } from '../identity/index.js';
-import { parseIAddress } from '../core/brands.js';
+import { getNetwork } from '../signing/index.js';
+import { assertWifIsPrimary } from '../identity/index.js';
 import { validateWif } from '../keys/index.js';
 import { TransactionBuildError, InvalidWifError } from '../errors.js';
-import type { Utxo, DefineCurrencyParams, DefineCurrencyResult } from '../types/index.js';
+import type { DefineCurrencyParams, DefineCurrencyResult } from '../types/index.js';
 
-const { completeFundedIdentityUpdate } = smarttxs;
+import { assembleFundedIdentityUpdate } from '../assemble/fundedIdentityUpdate.js';
 
 /**
  * Build and sign a currency definition transaction (manual mode)
@@ -56,8 +52,6 @@ export function defineCurrency(
   }
 
   const verusNetwork = getNetwork(network === 'testnet');
-  const networkConfig = NETWORK_CONFIG[network];
-  const systemId = networkConfig.chainId;
   const currencyDefValue = params.currencyDefValue || 0n;
 
   // Parse identity and set FLAG_ACTIVECURRENCY
@@ -78,105 +72,33 @@ export function defineCurrency(
   const identityOutputScript = identityScript.toBuffer();
   const currencyDefScript = Buffer.from(params.currencyDefScript, 'hex');
 
-  // Select funding UTXOs. The identity + currency-definition outputs can be
-  // large; size the fee from their real byte length so the tx isn't estimated
-  // below the relay minimum.
-  const selection = selectUtxos(
-    params.utxos,
-    currencyDefValue,
-    new Map(),
-    2,
-    systemId,
-    undefined,
-    true,
-    identityOutputScript.length + currencyDefScript.length,
-  );
-
-  // Currency definition pays only native and emits no token-change output, so a
-  // token-bearing funding UTXO would be silently dropped. Fail closed if one
-  // was selected (both maps empty ⇒ assert no token enters).
-  assertTokenConservation(
-    selection.selected,
-    new Map(),
-    new Map(),
-    systemId,
-    'currency definition',
-  );
-
-  // Build transaction
-  const txb = new TransactionBuilder(verusNetwork);
-  txb.setVersion(4);
-  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
-  txb.setVersionGroupId(VERSION_GROUP_ID);
-
-  for (const utxo of selection.selected) {
-    txb.addInput(
-      Buffer.from(utxo.txid, 'hex').reverse(),
-      utxo.outputIndex,
-      0xffffffff,
-      Buffer.from(utxo.script, 'hex'),
-    );
-  }
-
-  txb.addOutput(identityOutputScript, 0);
-  txb.addOutput(currencyDefScript, toSafeNumber(currencyDefValue));
-
-  if (selection.nativeChange > 0n) {
-    if (params.changeAddress.startsWith('i')) {
-      txb.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
-    } else {
-      txb.addOutput(params.changeAddress, toSafeNumber(selection.nativeChange));
-    }
-  }
-
-  const fundedTx = txb.buildIncomplete();
-  const fundedHex = fundedTx.toHex();
-
-  // Add the previous identity UTXO as last input
-  const prevOutScripts = selection.selected.map(u => Buffer.from(u.script, 'hex'));
-  const idUtxo = params.identityUtxo;
-  // Any native value on the identity input would be burned to miner fee (the
-  // recreated identity output is value 0). Identity outputs normally carry 0.
-  if (idUtxo.satoshis !== 0n) {
-    throw new TransactionBuildError(
-      `identityUtxo carries ${idUtxo.satoshis} native satoshis, which would be burned to miner fee ` +
-        `(the recreated identity output is value 0). Spend that value separately first.`,
-    );
-  }
-  const completedHex = completeFundedIdentityUpdate(
-    fundedHex,
-    verusNetwork,
-    prevOutScripts,
-    {
-      hash: Buffer.from(idUtxo.txid, 'hex').reverse(),
-      index: idUtxo.outputIndex,
-      sequence: 0xffffffff,
-      script: Buffer.from(idUtxo.script, 'hex'),
-    },
-  );
-
-  const allUtxos: Utxo[] = [...selection.selected, idUtxo];
-  // Inputs fund the currency-definition value + fee; the identity input/output
-  // are value 0, so the assembled native fee must equal selection.fee.
-  assertNativeConservation(
-    allUtxos,
-    Transaction.fromHex(completedHex, verusNetwork).outs,
-    selection.fee,
-    'currency definition',
-  );
-  const { signedTx, txid } = signTransactionSmart(
-    completedHex,
-    params.wif,
-    allUtxos,
-    verusNetwork,
-  );
+  // Respend the identity UTXO, recreating its (value-0) definition output with
+  // FLAG_ACTIVECURRENCY set, alongside the currency-definition output. The shared
+  // assembler funds them, emits native change, grafts on the identity input
+  // (re-signed last by the fork), and enforces native + token conservation.
+  const assembled = assembleFundedIdentityUpdate({
+    network,
+    wif: params.wif,
+    expiryHeight: params.expiryHeight,
+    funding: params.utxos,
+    identityUtxo: params.identityUtxo,
+    outputs: [
+      { script: identityOutputScript, nativeSat: 0n },
+      { script: currencyDefScript, nativeSat: currencyDefValue },
+    ],
+    changeAddress: params.changeAddress,
+    // The identity + currency-definition outputs can be large; size the fee from
+    // their real byte length so the tx isn't estimated below the relay minimum.
+    extraOutputBytes: identityOutputScript.length + currencyDefScript.length,
+    label: 'currency definition',
+  });
 
   return {
-    signedTx,
-    txid,
-    fee: selection.fee,
+    signedTx: assembled.signedTx,
+    txid: assembled.txid,
+    fee: assembled.fee,
     identityAddress: identity.getIdentityAddress(),
-    inputsUsed: allUtxos.length,
-    nativeChange: selection.nativeChange,
+    inputsUsed: assembled.inputsUsed,
+    nativeChange: assembled.nativeChange,
   };
 }
