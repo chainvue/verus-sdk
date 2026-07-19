@@ -198,6 +198,12 @@ export interface RegisterIdentityParams {
   registrationFeeAmount?: bigint;
   /** Native import fee in VRSC satoshis (for sub-IDs on fractional currencies) */
   nativeImportFee?: bigint;
+  /**
+   * Parent currency's proofprotocol (from `getcurrency <parent>`), required for
+   * sub-ID registration: 2 = centralized/token (fee is a reserve output, 0
+   * native), otherwise (1 = PBaaS/fractional) the fee is a reserve transfer.
+   */
+  parentProofProtocol?: number;
   /** Number of referral levels (default: 3) */
   referralLevels?: number;
   expiryHeight: number;

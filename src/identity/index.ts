@@ -21,6 +21,11 @@ import {
   Identity,
   IdentityScript,
   ContentMultiMap,
+  ReserveTransfer,
+  TransferDestination,
+  RESERVE_TRANSFER_VALID,
+  RESERVE_TRANSFER_BURN_CHANGE_PRICE,
+  DEST_ID,
 } from 'verus-typescript-primitives';
 import { EVALS } from 'verus-typescript-primitives';
 import {
@@ -35,6 +40,8 @@ import {
   DEFAULT_REFERRAL_LEVELS,
   PUBKEY_HASH_PREFIX,
   I_ADDR_VERSION,
+  RESERVE_TRANSFER_FEE,
+  RESERVE_TRANSFER_EVAL_PKH,
 } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { sha256d, writeCompactSize, iAddressToHash, toSafeNumber, addressToScriptPubKey } from '../utils/index.js';
@@ -504,30 +511,72 @@ export function createIdentityObject(params: {
 /**
  * Build the parent-currency registration-fee output for a sub-ID.
  *
- * The daemon pays this fee as a plain reserve output (EVAL_RESERVE_OUTPUT)
- * holding `feeAmount` of the parent currency AT the parent currency's own
- * i-address, carrying zero native value. Verified against `registeridentity`
- * on VRSCTEST and an accepted on-chain sub-ID registration: for a currency
- * with idregistrationfees=1.0 the fee output is exactly `{parent: 1.0}` at the
- * parent, 0 native, and the native cost that leaves the transaction is the
- * currency's idimportfees (the caller passes it as `nativeImportFee`).
+ * The fee-output STRUCTURE depends on the parent currency's proofprotocol,
+ * verified against accepted on-chain registrations on VRSCTEST:
+ *  - proofprotocol 2 (centralized / token, e.g. `ownora-nft`): a plain reserve
+ *    output (EVAL_RESERVE_OUTPUT) holding `feeAmount` of the parent AT the
+ *    parent's i-address, ZERO native.
+ *  - otherwise (e.g. proofprotocol 1 PBaaS/fractional, `fum`): a CReserveTransfer
+ *    (EVAL_RESERVE_TRANSFER) of `feeAmount` to the parent, carrying
+ *    RESERVE_TRANSFER_FEE (0.0002) native.
  *
- * A previous implementation built this as a CReserveTransfer to the
- * reserve-transfer eval address carrying 0.0002 native — a cross-currency
- * transfer, not a same-chain fee payment. That structure never matched the
- * daemon and was never accepted at broadcast.
+ * An offline SDK cannot read the parent's proofprotocol, so the caller passes it
+ * (`parentProofProtocol`). In both cases the native the transaction actually
+ * burns is the parent's idimportfees (`nativeImportFee`); the fee output's own
+ * native value is funded and cancels out in the conservation accounting.
  *
- * `systemId`/`_controlAddress` are retained for signature compatibility and
- * are unused: the fee is denominated in and paid to the parent currency.
+ * `_controlAddress` is retained for signature compatibility and is unused.
  */
 export function buildRegistrationFeeOutput(
   parentCurrencyId: string,
   feeAmount: bigint,
   systemId: string,
   _controlAddress: string,
+  parentProofProtocol = 2,
 ): { script: Buffer; nativeValue: bigint } {
-  void systemId;
-  return buildTokenChangeOutput(parseIAddress(parentCurrencyId, 'parentCurrencyId'), new Map([[parentCurrencyId, feeAmount]]));
+  if (parentProofProtocol === 2) {
+    return buildTokenChangeOutput(parseIAddress(parentCurrencyId, 'parentCurrencyId'), new Map([[parentCurrencyId, feeAmount]]));
+  }
+  return buildRegistrationFeeReserveTransfer(parentCurrencyId, feeAmount, systemId);
+}
+
+/**
+ * CReserveTransfer fee output for a sub-ID under a non-centralized (proofprotocol
+ * != 2) parent — the daemon's form for PBaaS/fractional currencies. Carries
+ * RESERVE_TRANSFER_FEE native.
+ */
+function buildRegistrationFeeReserveTransfer(
+  parentCurrencyId: string,
+  feeAmount: bigint,
+  systemId: string,
+): { script: Buffer; nativeValue: bigint } {
+  const destination = new TxDestination(KeyID.fromAddress(RESERVE_TRANSFER_EVAL_PKH));
+  const values = new CurrencyValueMap({
+    value_map: new Map([[parentCurrencyId, new BN(feeAmount.toString(10))]]),
+    multivalue: false,
+  });
+  const parentHash = fromBase58Check(parentCurrencyId).hash;
+  const transferDest = new TransferDestination({ type: DEST_ID, destination_bytes: Buffer.from(parentHash) });
+  const flags = RESERVE_TRANSFER_VALID.or(RESERVE_TRANSFER_BURN_CHANGE_PRICE);
+  const resTransfer = new ReserveTransfer({
+    values,
+    version: new BN(1),
+    flags,
+    fee_currency_id: systemId,
+    fee_amount: new BN(RESERVE_TRANSFER_FEE.toString(10)),
+    transfer_destination: transferDest,
+    dest_currency_id: parentCurrencyId,
+  });
+  const master = new OptCCParams({
+    version: new BN(3), eval_code: new BN(EVALS.EVAL_NONE), m: new BN(1), n: new BN(1),
+    destinations: [destination], vdata: [],
+  });
+  const params = new OptCCParams({
+    version: new BN(3), eval_code: new BN(EVALS.EVAL_RESERVE_TRANSFER), m: new BN(1), n: new BN(1),
+    destinations: [destination], vdata: [resTransfer.toBuffer()],
+  });
+  const script = new SmartTransactionScript(master, params);
+  return { script: script.toBuffer(), nativeValue: RESERVE_TRANSFER_FEE };
 }
 
 /**
@@ -986,11 +1035,22 @@ function _buildSubIdRegistration(
     );
   }
 
+  // The fee-output structure differs by the parent's proofprotocol (2 =
+  // reserve output, else reserve transfer), which the offline SDK cannot read —
+  // the caller must supply it (from `getcurrency <parent>.proofprotocol`).
+  if (params.parentProofProtocol === undefined) {
+    throw new TransactionBuildError(
+      "parentProofProtocol is required for sub-ID registration: pass the parent currency's proofprotocol " +
+        '(from `getcurrency <parent>`) — 2 for a centralized/token currency, 1 for a PBaaS/fractional one.',
+    );
+  }
+
   const feeOutput = buildRegistrationFeeOutput(
     parentIAddress,
     registrationFeeAmount,
     systemId,
     params.changeAddress,
+    params.parentProofProtocol,
   );
 
   const requiredCurrencies = new Map<string, bigint>([
