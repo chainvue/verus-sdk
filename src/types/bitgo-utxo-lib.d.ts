@@ -34,12 +34,19 @@ declare module '@bitgo/utxo-lib' {
     [key: string]: VerusNetworkConfig;
   };
 
+  /** The fork's ECDSA signature object (bitcoinjs-era). */
+  export class ECSignature {
+    /** 65-byte compact [recovery, r(32), s(32)]; offers use `.slice(1)` (the 64-byte r||s). */
+    toCompact(): Buffer;
+    r: unknown;
+    s: unknown;
+  }
+
   export class ECPair {
     static fromWIF(wif: string, network: VerusNetworkConfig): ECPair;
     static fromPublicKeyBuffer(buffer: Buffer, network?: VerusNetworkConfig): ECPair;
     getPublicKeyBuffer(): Buffer;
-    /** Returns the fork's ECSignature object — opaque to this SDK. */
-    sign(hash: Buffer): unknown;
+    sign(hash: Buffer): ECSignature;
     getAddress(): string;
     toWIF(): string;
     network: VerusNetworkConfig;
@@ -48,11 +55,40 @@ declare module '@bitgo/utxo-lib' {
 
   export class Transaction {
     static SIGHASH_ALL: number;
+    static SIGHASH_SINGLE: number;
+    static SIGHASH_ANYONECANPAY: number;
     static fromHex(hex: string, network?: VerusNetworkConfig): Transaction;
     toHex(): string;
     getId(): string;
+    /**
+     * Sighash for an input under a given hashType. Needed for offers, which sign
+     * with SIGHASH_SINGLE|ANYONECANPAY; `isWitness` is false for Verus CC inputs.
+     */
+    hashForSignatureByNetwork(
+      inIndex: number,
+      prevOutScript: Buffer,
+      amount: number,
+      hashType: number,
+      isWitness: boolean,
+    ): Buffer;
     ins: Array<{ hash: Buffer; index: number; script: Buffer; sequence: number }>;
     outs: Array<{ value: number; script: Buffer }>;
+  }
+
+  /** One CryptoCondition signature (`SmartTransactionSignature(version, m, pubKey, sig64)`). */
+  export class SmartTransactionSignature {
+    constructor(version: number, numSignatures: number, pubKey: Buffer, oneSignature: Buffer);
+  }
+
+  /**
+   * The CryptoCondition fulfillment for a smart-transaction input. The second
+   * constructor argument is the sighash type embedded in the fulfillment — offers
+   * set it to SIGHASH_SINGLE|ANYONECANPAY (the fork's txb.sign hardcodes it to
+   * SIGHASH_ALL, which is why offers build this explicitly).
+   */
+  export class SmartTransactionSignatures {
+    constructor(version: number, hashType: number, signatures: SmartTransactionSignature[]);
+    toChunk(): Buffer;
   }
 
   export class TransactionBuilder {
