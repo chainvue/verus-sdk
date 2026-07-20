@@ -19,7 +19,7 @@ const OWNORA_ID = 'iFefrNRjNcvW473Hnx2eKW9jpWuFKE11vw';
 
 function makeOfferPartial() {
   const funding = buildOfferFunding(
-    { wif: TEST_WIF, utxos: [makeFundingUtxo('aa', 100_000_000n)], changeAddress: TEST_ADDRESS, makerAddress: TEST_ADDRESS, offerAmount: 100_000n, expiryHeight: 0 },
+    { wif: TEST_WIF, utxos: [makeFundingUtxo('aa', 100_000_000n)], changeAddress: TEST_ADDRESS, makerAddress: TEST_ADDRESS, offered: { currency: VRSCTEST_SYSTEM_ID, amount: 100_000n }, expiryHeight: 0 },
     NETWORK,
   );
   const offer = buildOffer(

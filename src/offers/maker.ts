@@ -14,16 +14,22 @@
  *      the atomic swap; a taker completes it.
  *
  * Every byte-bearing piece here is verified byte-identical to the daemon's
- * makeoffer output on VRSCTEST: the funding commitment
- * (`buildCommitmentScript` with a zero hash), the wanted reserve output
+ * makeoffer output on VRSCTEST: the native funding commitment
+ * (`buildCommitmentScript` with a zero hash), the token funding commitment
+ * (`buildTokenCommitmentScript`), the wanted reserve output
  * (`buildTokenChangeOutput`), and the 0x83 fulfillment.
  *
- * This module covers offers of the NATIVE coin (the offered value is native).
- * Offering a token (a reserve-value commitment) is a separate follow-up.
+ * The offered asset may be the native coin or a token; the wanted asset may be
+ * the native coin or a token (all four combinations).
  */
 import { TransactionBuilder } from '../fork/boundary.js';
 import { assembleAndSign } from '../assemble/assembler.js';
-import { buildCommitmentScript, buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
+import {
+  buildCommitmentScript,
+  buildTokenCommitmentScript,
+  buildTokenChangeOutput,
+  identityPaymentScript,
+} from '../identity/index.js';
 import { signOfferInput } from './sign.js';
 import { getNetwork, resolveExpiryHeight } from '../signing/index.js';
 import { toSafeNumber, addressToScriptPubKey } from '../utils/index.js';
@@ -49,8 +55,12 @@ export interface BuildOfferFundingParams {
   changeAddress: string;
   /** The maker's R-address that will control (and later spend) the commitment. */
   makerAddress: string;
-  /** Native satoshis being offered — locked into the commitment output. */
-  offerAmount: bigint;
+  /**
+   * The asset being offered, locked into the commitment output: the native coin
+   * (currency = the chain id) or a token (currency = an i-address). For a token,
+   * `utxos` must include reserve UTXOs holding at least `amount` of it.
+   */
+  offered: { currency: string; amount: bigint };
   expiryHeight?: number;
 }
 
@@ -70,20 +80,34 @@ export function buildOfferFunding(
   params: BuildOfferFundingParams,
   network: Network,
 ): BuildOfferFundingResult {
-  if (params.offerAmount <= 0n) {
-    throw new TransactionBuildError('offerAmount must be positive');
+  if (params.offered.amount <= 0n) {
+    throw new TransactionBuildError('offered.amount must be positive');
   }
-  const commitmentScript = buildCommitmentScript(
-    Buffer.alloc(32, 0),
-    parseRAddress(params.makerAddress, 'makerAddress'),
-  );
+  const makerAddress = parseRAddress(params.makerAddress, 'makerAddress');
+  const systemId = NETWORK_CONFIG[network].chainId;
+  const offeringNative = params.offered.currency === systemId;
+
+  // The commitment output: a 32-zero-hash commitment carrying the offered native
+  // value, or a token commitment (marker + TokenOutput) carrying the offered token
+  // as reserve value with 0 native. Both are byte-identical to the daemon.
+  const commitmentScript = offeringNative
+    ? buildCommitmentScript(Buffer.alloc(32, 0), makerAddress)
+    : buildTokenCommitmentScript(params.offered.currency, params.offered.amount, makerAddress);
+
+  const commitmentOutput = offeringNative
+    ? { script: commitmentScript, nativeSat: params.offered.amount }
+    : {
+        script: commitmentScript,
+        nativeSat: 0n,
+        carries: new Map([[params.offered.currency, params.offered.amount]]),
+      };
 
   const assembled = assembleAndSign({
     network,
     wif: params.wif,
     expiryHeight: params.expiryHeight ?? 0,
     funding: params.utxos,
-    outputs: [{ script: commitmentScript, nativeSat: params.offerAmount }],
+    outputs: [commitmentOutput],
     changeAddress: params.changeAddress,
     fee: { policy: 'estimate' },
     label: 'offer funding',
@@ -96,7 +120,9 @@ export function buildOfferFunding(
     commitment: {
       txid: assembled.txid,
       vout: 0,
-      value: params.offerAmount,
+      // Native satoshis on the commitment output — 0 for a token offer. This is
+      // the amount the offer input signs over (SIGHASH_SINGLE|ANYONECANPAY).
+      value: offeringNative ? params.offered.amount : 0n,
       script: commitmentScript.toString('hex'),
     },
   };
