@@ -96,6 +96,27 @@ export {
 } from './constants/index.js';
 export type { Network } from './constants/index.js';
 
+// Marketplace-offer types (also available via the offers namespace)
+export type {
+  FundedOutpoint,
+  BuildOfferFundingParams,
+  BuildOfferFundingResult,
+  OfferWant,
+  BuildOfferParams,
+  BuildOfferResult,
+  CompleteOfferParams,
+  CompleteOfferResult,
+  BuildSellIdentityOfferParams,
+  CompleteSellIdentityOfferParams,
+  CompleteSellIdentityOfferResult,
+  BuildBuyIdentityOfferParams,
+  CompleteBuyIdentityOfferParams,
+  CompleteBuyIdentityOfferResult,
+  BuildSwapIdentityOfferParams,
+  CompleteSwapIdentityOfferParams,
+  CompleteSwapIdentityOfferResult,
+} from './offers/public.js';
+
 // Submodules for power users
 export * as address from './address/index.js';
 export * as keys from './keys/index.js';
@@ -107,3 +128,5 @@ export * as transfer from './transfer/index.js';
 export * as message from './message/index.js';
 export * as currency from './currency/index.js';
 export * as utils from './utils/index.js';
+// Curated public subset (see offers/public.ts); the fulfillment signers are internal.
+export * as offers from './offers/public.js';
