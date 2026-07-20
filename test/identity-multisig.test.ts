@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import pkg from 'verus-typescript-primitives';
 import { buildMultisigIdentityUpdate, addIdentitySignature } from '../src/identity/multisig.js';
 import { buildIdentityScript } from '../src/identity/index.js';
-import { Transaction, ECPair, script as bscript } from '../src/fork/boundary.js';
+import { Transaction, ECPair, script as bscript, SmartTransactionSignatures, SmartTransactionSignature } from '../src/fork/boundary.js';
 import { getNetwork } from '../src/signing/index.js';
 import { VerusSDK } from '../src/index.js';
 import {
@@ -157,5 +157,25 @@ describe('addIdentitySignature', () => {
     expect(() =>
       addIdentitySignature({ partialTx: built.partialTx, identityInput: built.identityInput, currentPrimaryAddresses: [TEST_ADDRESS, TEST_ADDRESS_B], minSignatures: 2, wif: stranger }, NETWORK),
     ).toThrow(/not one of the identity's primary addresses/);
+  });
+
+  it('drops a foreign signature injected into a supplied partialTx (does not count it)', () => {
+    const built = build(2);
+    // Forge a partial tx whose CC input already carries a stranger's signature.
+    const strangerKey = ECPair.fromWIF(VerusSDK.generateWif(), net);
+    const forged = Transaction.fromHex(built.partialTx, net);
+    const bogus = new SmartTransactionSignatures(1, Transaction.SIGHASH_ALL, [
+      new SmartTransactionSignature(1, 1, strangerKey.getPublicKeyBuffer(), Buffer.alloc(64, 7)),
+    ]).toChunk();
+    forged.ins[built.identityInput.index]!.script = bscript.compile([bogus]);
+
+    // A real authority signs: the stranger's entry must be dropped, not counted.
+    const res = addIdentitySignature({ partialTx: forged.toHex(), identityInput: built.identityInput, currentPrimaryAddresses: [TEST_ADDRESS, TEST_ADDRESS_B], minSignatures: 2, wif: TEST_WIF }, NETWORK);
+    expect(res.collected).toBe(1);
+    expect(res.complete).toBe(false);
+    // The one surviving entry is the authority's, not the stranger's.
+    const chunk = ccChunk(Transaction.fromHex(res.partialTx, net), 1);
+    expect(chunk.subarray(0, 3).toString('hex')).toBe('010101'); // version, SIGHASH_ALL, count 1
+    expect(chunk.subarray(5, 38).toString('hex')).toBe(PK_A);
   });
 });

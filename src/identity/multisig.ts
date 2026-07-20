@@ -194,7 +194,12 @@ export interface AddIdentitySignatureParams {
   /** The partial update tx (from buildMultisigIdentityUpdate or a prior addIdentitySignature). */
   partialTx: string;
   identityInput: IdentityInputRef;
-  /** The current identity's primary addresses IN ORDER (for signature ordering). */
+  /**
+   * The current identity's primary addresses IN ORDER — the signature ordering key.
+   * Every signer MUST pass the identical list (read from the same `getidentity`);
+   * each call re-sorts the whole fulfillment by this list, so an inconsistent order
+   * from the last signer would win. Read it from the identity, don't hand-order it.
+   */
   currentPrimaryAddresses: string[];
   minSignatures: number;
   /** An authority's WIF — must control one of `currentPrimaryAddresses`. */
@@ -245,7 +250,11 @@ export function addIdentitySignature(
   const sig = keyPair.sign(sighash).toCompact().slice(1); // 64-byte r||s
   const entry = new SmartTransactionSignature(1, 1, keyPair.getPublicKeyBuffer(), sig);
 
-  // Parse any existing signatures on this input and add ours (deduped by signer).
+  // Parse any existing signatures on this input. Keep only genuine authority
+  // signatures — an entry whose pubkey is NOT one of the current primary addresses
+  // (a stale or tampered-in signature from a supplied partialTx) is dropped, so it
+  // can neither inflate `collected` nor sort ahead of the real signers. Our own
+  // prior signature is dropped too and re-added fresh (idempotent).
   const existing: InstanceType<typeof SmartTransactionSignature>[] = [];
   if (input.script.length > 0) {
     const chunk = (bscript.decompile(input.script) ?? []).find((c): c is Buffer => Buffer.isBuffer(c));
@@ -254,7 +263,10 @@ export function addIdentitySignature(
       for (const s of parsed.signatures ?? []) existing.push(s);
     }
   }
-  const merged = existing.filter((s) => addressOfPubkey(s.pubKeyData, verusNetwork) !== signerAddress);
+  const merged = existing.filter((s) => {
+    const addr = addressOfPubkey(s.pubKeyData, verusNetwork);
+    return addr !== signerAddress && params.currentPrimaryAddresses.indexOf(addr) >= 0;
+  });
   merged.push(entry);
 
   // Order by each signer's position in the identity's primary addresses.
