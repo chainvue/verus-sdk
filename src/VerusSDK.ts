@@ -40,6 +40,8 @@ import type {
   BuildOfferResult,
   CompleteOfferParams,
   CompleteOfferResult,
+  ReclaimOfferParams,
+  ReclaimOfferResult,
   BuildSellIdentityOfferParams,
   CompleteSellIdentityOfferParams,
   CompleteSellIdentityOfferResult,
@@ -224,6 +226,15 @@ export class VerusSDK {
    */
   completeOffer(params: CompleteOfferParams): CompleteOfferResult {
     return offersModule.completeOffer(params, this.network);
+  }
+
+  /**
+   * Maker: cancel an unaccepted offer — spend the funding commitment back to the
+   * maker (SIGHASH_ALL). Native: the fee comes out of the reclaimed value; token:
+   * pass native `feeUtxos` controlled by the same key.
+   */
+  buildReclaimOffer(params: ReclaimOfferParams): ReclaimOfferResult {
+    return offersModule.buildReclaimOffer(params, this.network);
   }
 
   /** Maker: offer a VerusID for a currency (spends the identity's on-chain output). */

@@ -106,6 +106,8 @@ export type {
   BuildOfferResult,
   CompleteOfferParams,
   CompleteOfferResult,
+  ReclaimOfferParams,
+  ReclaimOfferResult,
   BuildSellIdentityOfferParams,
   CompleteSellIdentityOfferParams,
   CompleteSellIdentityOfferResult,

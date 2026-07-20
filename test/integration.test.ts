@@ -199,6 +199,7 @@ describe('VerusSDK integration', () => {
         'buildOfferFunding',
         'buildOffer',
         'completeOffer',
+        'buildReclaimOffer',
         'buildSellIdentityOffer',
         'completeSellIdentityOffer',
         'buildBuyIdentityOffer',

@@ -31,6 +31,10 @@ export {
   completeOffer,
 } from './taker.js';
 export {
+  // Maker cancel: reclaim an unaccepted offer's funding commitment.
+  buildReclaimOffer,
+} from './reclaim.js';
+export {
   // Identity-offer flows (sell / buy / swap), maker + taker halves.
   buildSellIdentityOffer,
   completeSellIdentityOffer,
@@ -49,6 +53,7 @@ export type {
   BuildOfferResult,
 } from './maker.js';
 export type { CompleteOfferParams, CompleteOfferResult } from './taker.js';
+export type { ReclaimOfferParams, ReclaimOfferResult } from './reclaim.js';
 export type {
   BuildSellIdentityOfferParams,
   CompleteSellIdentityOfferParams,
