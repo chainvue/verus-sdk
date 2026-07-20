@@ -1,6 +1,6 @@
 {
   "name": "@chainvue/verus-sdk",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "100% offline, fully typed TypeScript SDK for Verus transaction signing",
   "author": "Robert Lech",
   "main": "dist/bundle.js",

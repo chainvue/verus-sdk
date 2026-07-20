@@ -1,5 +1,27 @@
 # Changelog
 
+# [0.11.0](https://github.com/chainvue/verus-sdk/compare/v0.10.0...v0.11.0) (2026-07-20)
+
+
+### Bug Fixes
+
+* **offers:** harden identity-offer taker; address review findings ([01e0955](https://github.com/chainvue/verus-sdk/commit/01e0955357371b3f33ae5b586b774d7ffeeda117))
+* **offers:** require a real future expiryHeight on an offer (live finding) ([0ee5382](https://github.com/chainvue/verus-sdk/commit/0ee5382d73549c9177d4431aa3ff009eb32389d0))
+
+
+### Features
+
+* **offers:** add the SIGHASH_SINGLE|ANYONECANPAY offer-input signer (Phase 3, brick 1) ([44aec56](https://github.com/chainvue/verus-sdk/commit/44aec56cd4ed77a60644327515f2851c1b413dd8))
+* **offers:** buy a VerusID with currency (5b, brick 2) ([734ceeb](https://github.com/chainvue/verus-sdk/commit/734ceeba955de30d05c2527bcff802c08140fbc4))
+* **offers:** expose the offers suite on the public API ([b12a307](https://github.com/chainvue/verus-sdk/commit/b12a307db228a6abf32de2e2bd1952dd3cd18c39))
+* **offers:** generalize the taker to all four currency combos (5a, brick 2) ([633f8cf](https://github.com/chainvue/verus-sdk/commit/633f8cf48103de22c332646538c10bbe1776da2d))
+* **offers:** native-coin maker flow — funding + offer tx (Phase 3, brick 2) ([5b07acb](https://github.com/chainvue/verus-sdk/commit/5b07acb5dbf71c29ffeb81f35f218285cced2444))
+* **offers:** native-for-token taker flow — completeOffer (Phase 4, brick 2) ([7eed2cc](https://github.com/chainvue/verus-sdk/commit/7eed2ccc106380fc92beda6d793ac4d2cff1ebee))
+* **offers:** offer a token — token-commitment funding (5a, brick 1) ([b904cf9](https://github.com/chainvue/verus-sdk/commit/b904cf9b90e4c08a55de2ed6f037a5d35c5d298d))
+* **offers:** selective taker-input signer (Phase 4, brick 1) ([74ae6e6](https://github.com/chainvue/verus-sdk/commit/74ae6e61a0956f92beac8bd8875ee5dffa1c6983))
+* **offers:** sell a VerusID for currency (5b, brick 1) ([33356ad](https://github.com/chainvue/verus-sdk/commit/33356adc98cfbd8e1c4496c199c89adc2f92017e))
+* **offers:** swap a VerusID for a VerusID (5c) ([c22652e](https://github.com/chainvue/verus-sdk/commit/c22652ebb2d9a1b7e7e460c7ecc90cfe7159efa1))
+
 # [0.10.0](https://github.com/chainvue/verus-sdk/compare/v0.9.0...v0.10.0) (2026-07-19)
 
 
