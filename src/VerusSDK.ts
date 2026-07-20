@@ -33,11 +33,30 @@ import type {
   VerifyMessageResult,
 } from './types/index.js';
 
+import type {
+  BuildOfferFundingParams,
+  BuildOfferFundingResult,
+  BuildOfferParams,
+  BuildOfferResult,
+  CompleteOfferParams,
+  CompleteOfferResult,
+  BuildSellIdentityOfferParams,
+  CompleteSellIdentityOfferParams,
+  CompleteSellIdentityOfferResult,
+  BuildBuyIdentityOfferParams,
+  CompleteBuyIdentityOfferParams,
+  CompleteBuyIdentityOfferResult,
+  BuildSwapIdentityOfferParams,
+  CompleteSwapIdentityOfferParams,
+  CompleteSwapIdentityOfferResult,
+} from './offers/public.js';
+
 import * as transferModule from './transfer/index.js';
 import * as identityModule from './identity/index.js';
 import * as messageModule from './message/index.js';
 import * as currencyModule from './currency/index.js';
 import * as keysModule from './keys/index.js';
+import * as offersModule from './offers/public.js';
 
 export class VerusSDK {
   readonly network: Network;
@@ -179,6 +198,62 @@ export class VerusSDK {
   /** Verify a VerusID message signature */
   verifyMessage(params: VerifyMessageParams): VerifyMessageResult {
     return messageModule.verifyMessage(params, this.network);
+  }
+
+  // ─── Marketplace Offers (atomic swaps) ─────────────
+
+  /**
+   * Maker step 1 (currency offers only): fund the OFFERED asset into a commitment
+   * output. Broadcast the returned tx, then pass `commitment` to `buildOffer`.
+   */
+  buildOfferFunding(params: BuildOfferFundingParams): BuildOfferFundingResult {
+    return offersModule.buildOfferFunding(params, this.network);
+  }
+
+  /**
+   * Maker step 2 (currency offers): build the half-signed offer — spend the funded
+   * commitment with 0x83, committing to the single WANTED output paid to the maker.
+   */
+  buildOffer(params: BuildOfferParams): BuildOfferResult {
+    return offersModule.buildOffer(params, this.network);
+  }
+
+  /**
+   * Taker (currency offers): complete the maker's offer — pay the wanted asset,
+   * receive the offered asset, and sign the taker's side into an atomic swap.
+   */
+  completeOffer(params: CompleteOfferParams): CompleteOfferResult {
+    return offersModule.completeOffer(params, this.network);
+  }
+
+  /** Maker: offer a VerusID for a currency (spends the identity's on-chain output). */
+  buildSellIdentityOffer(params: BuildSellIdentityOfferParams): BuildOfferResult {
+    return offersModule.buildSellIdentityOffer(params, this.network);
+  }
+
+  /** Taker: complete a sell-identity offer — pay the currency, receive the identity. */
+  completeSellIdentityOffer(params: CompleteSellIdentityOfferParams): CompleteSellIdentityOfferResult {
+    return offersModule.completeSellIdentityOffer(params, this.network);
+  }
+
+  /** Maker: offer a currency for a VerusID (funds the currency into a commitment). */
+  buildBuyIdentityOffer(params: BuildBuyIdentityOfferParams): BuildOfferResult {
+    return offersModule.buildBuyIdentityOffer(params, this.network);
+  }
+
+  /** Taker (identity owner): complete a buy-identity offer — give up the identity, take the currency. */
+  completeBuyIdentityOffer(params: CompleteBuyIdentityOfferParams): CompleteBuyIdentityOfferResult {
+    return offersModule.completeBuyIdentityOffer(params, this.network);
+  }
+
+  /** Maker: offer a VerusID for another VerusID (no currency moves). */
+  buildSwapIdentityOffer(params: BuildSwapIdentityOfferParams): BuildOfferResult {
+    return offersModule.buildSwapIdentityOffer(params, this.network);
+  }
+
+  /** Taker (owns the wanted identity): complete an identity swap — funds only the miner fee. */
+  completeSwapIdentityOffer(params: CompleteSwapIdentityOfferParams): CompleteSwapIdentityOfferResult {
+    return offersModule.completeSwapIdentityOffer(params, this.network);
   }
 
   // ─── Static Utilities ─────────────────────────────

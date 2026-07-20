@@ -189,6 +189,30 @@ describe('VerusSDK integration', () => {
       expect(mod.message).toBeDefined();
       expect(mod.currency).toBeDefined();
       expect(mod.utils).toBeDefined();
+      expect(mod.offers).toBeDefined();
+    });
+
+    it('should expose the offers suite via the namespace and the facade', async () => {
+      const mod = await import('../src/index.js');
+      const sdk = new mod.VerusSDK({ network: 'testnet' });
+      const flows = [
+        'buildOfferFunding',
+        'buildOffer',
+        'completeOffer',
+        'buildSellIdentityOffer',
+        'completeSellIdentityOffer',
+        'buildBuyIdentityOffer',
+        'completeBuyIdentityOffer',
+        'buildSwapIdentityOffer',
+        'completeSwapIdentityOffer',
+      ] as const;
+      for (const fn of flows) {
+        expect(typeof mod.offers[fn]).toBe('function');
+        expect(typeof (sdk as unknown as Record<string, unknown>)[fn]).toBe('function');
+      }
+      // The lower-level fulfillment signers stay internal (not on the public namespace).
+      expect((mod.offers as Record<string, unknown>)['signOfferInput']).toBeUndefined();
+      expect((mod.offers as Record<string, unknown>)['signTakerInputs']).toBeUndefined();
     });
   });
 });

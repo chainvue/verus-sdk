@@ -237,6 +237,42 @@ export function buildCommitmentScript(
 }
 
 /**
+ * The daemon's fixed marker occupying the CCommitmentHash `hash` field of an
+ * offer-funding commitment that locks a TOKEN (not the native coin). It is the
+ * hash160 of the constant VDXF key `i74sHfYTqdfd5ZSmQSLHug4GuX2XHKwA7Y`,
+ * zero-extended to a uint256. Captured byte-identical from `makeoffer` on
+ * VRSCTEST across different offered currencies, amounts, and wanted sides — it
+ * is a protocol constant, independent of the offer's contents.
+ */
+const OFFER_TOKEN_COMMITMENT_MARKER = Buffer.concat([
+  Buffer.from('2767181a4f6abe2090a7dca2c689477d163900f6', 'hex'),
+  Buffer.alloc(12, 0),
+]);
+
+/**
+ * Build the offer-funding commitment output that locks an offered TOKEN.
+ *
+ * Mirrors the daemon's `makeoffer` funding output for a token: an
+ * EVAL_IDENTITY_COMMITMENT (eval-17) CC whose vData is the constant marker
+ * followed by a TokenOutput carrying the offered currency and amount. The
+ * output's native value is 0; it carries the token as reserve value. The native
+ * counterpart is {@link buildCommitmentScript} with a 32-zero hash.
+ */
+export function buildTokenCommitmentScript(
+  offeredCurrency: string,
+  amountSat: bigint,
+  controlAddress: RAddress,
+): Buffer {
+  const values = new CurrencyValueMap({
+    value_map: new Map([[offeredCurrency, new BN(amountSat.toString(10))]]),
+    multivalue: false,
+  });
+  const tokenOutput = new TokenOutput({ version: new BN(1), values });
+  const vdata = Buffer.concat([OFFER_TOKEN_COMMITMENT_MARKER, tokenOutput.toBuffer()]);
+  return buildCommitmentScript(vdata, controlAddress);
+}
+
+/**
  * Build the name reservation output script
  */
 export function buildReservationScript(

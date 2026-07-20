@@ -29,4 +29,9 @@ export {
   script,
   opcodes,
   address,
+  // CryptoCondition signature fulfillments — needed to sign an offer input with
+  // SIGHASH_SINGLE|ANYONECANPAY, which the fork's txb.sign hardcodes to
+  // SIGHASH_ALL (so the offer fulfillment is built explicitly, see src/offers).
+  SmartTransactionSignatures,
+  SmartTransactionSignature,
 } from '@bitgo/utxo-lib';
