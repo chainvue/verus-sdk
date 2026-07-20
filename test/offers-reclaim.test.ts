@@ -2,10 +2,10 @@
  * Reclaiming (cancelling) an unaccepted offer: spend the maker's funding
  * commitment back to the maker, signed SIGHASH_ALL.
  *
- * The native path is additionally live-proven on VRSCTEST — the SDK funded a
- * commitment (0.01) and reclaimed it (0.0099 after fee, tx 6208d0db). The token
- * path reuses primitives that are themselves byte-proven (the reserve output) and
- * live-proven (the CC spend + native fee funding), and is asserted here.
+ * Both paths are live-proven on VRSCTEST: the native path funded a commitment
+ * (0.01) and reclaimed it (0.0099 after fee, tx 6208d0db); the token path funded a
+ * 5-token commitment and reclaimed it in full with a native P2PKH fee UTXO (tx
+ * 709d4b23) — the daemon accepted the SIGHASH_ALL CC spend + reserve conservation.
  */
 import { describe, it, expect } from 'vitest';
 import { buildReclaimOffer } from '../src/offers/reclaim.js';
