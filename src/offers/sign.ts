@@ -25,6 +25,7 @@ import {
 } from '../fork/boundary.js';
 import { getNetwork } from '../signing/index.js';
 import { toSafeNumber } from '../utils/index.js';
+import { isSmartTransactionScript } from '../utxo/index.js';
 import { TransactionBuildError } from '../errors.js';
 import type { Network } from '../constants/index.js';
 
@@ -79,5 +80,60 @@ export function signOfferInput(
   // The scriptSig pushes the fulfillment as one data element (OP_PUSHDATA1 …),
   // matching the daemon's `4c67 0183…` — toChunk() is the raw bytes, not the push.
   input.script = bscript.compile([fulfillment]);
+  return { signedTx: tx.toHex(), txid: tx.getId() };
+}
+
+/** One input the taker contributes to an offer completion. */
+export interface TakerInput {
+  index: number;
+  /** The scriptPubKey of the UTXO being spent (P2PKH or a CC reserve output). */
+  prevOutScript: Buffer;
+  value: bigint;
+}
+
+/**
+ * Sign the taker's inputs of an offer completion with SIGHASH_ALL, leaving the
+ * maker's SIGHASH_SINGLE|ANYONECANPAY input untouched.
+ *
+ * Each input is signed manually and its scriptSig set directly: the fork's
+ * `TransactionBuilder.build()` rebuilds ALL inputs and cannot preserve a
+ * pre-signed CryptoCondition input (it throws "Not enough signatures provided"),
+ * so the taker side is assembled at the transaction level. Both plain (P2PKH) and
+ * CC (reserve) taker inputs are handled. Because the taker signs the whole
+ * transaction (ALL), the maker's already-committed input + output stay valid —
+ * SINGLE|ANYONECANPAY does not commit to the inputs and outputs the taker added.
+ */
+export function signTakerInputs(
+  txHex: string,
+  takerInputs: TakerInput[],
+  wif: string,
+  network: Network,
+): { signedTx: string; txid: string } {
+  const verusNetwork = getNetwork(network === 'testnet');
+  const tx = Transaction.fromHex(txHex, verusNetwork);
+  const keyPair = ECPair.fromWIF(wif, verusNetwork);
+
+  for (const { index, prevOutScript, value } of takerInputs) {
+    const input = tx.ins[index];
+    if (!input) {
+      throw new TransactionBuildError(`signTakerInputs: no input at index ${index}`);
+    }
+    const sighash = tx.hashForSignatureByNetwork(
+      index,
+      prevOutScript,
+      toSafeNumber(value),
+      Transaction.SIGHASH_ALL,
+      false,
+    );
+    const signature = keyPair.sign(sighash);
+    input.script = isSmartTransactionScript(prevOutScript)
+      ? bscript.compile([
+          new SmartTransactionSignatures(1, Transaction.SIGHASH_ALL, [
+            new SmartTransactionSignature(1, 1, keyPair.getPublicKeyBuffer(), signature.toCompact().slice(1)),
+          ]).toChunk(),
+        ])
+      : bscript.compile([signature.toScriptSignature(Transaction.SIGHASH_ALL), keyPair.getPublicKeyBuffer()]);
+  }
+
   return { signedTx: tx.toHex(), txid: tx.getId() };
 }

@@ -38,6 +38,8 @@ declare module '@bitgo/utxo-lib' {
   export class ECSignature {
     /** 65-byte compact [recovery, r(32), s(32)]; offers use `.slice(1)` (the 64-byte r||s). */
     toCompact(): Buffer;
+    /** DER signature with the hashType byte appended — a P2PKH scriptSig element. */
+    toScriptSignature(hashType: number): Buffer;
     r: unknown;
     s: unknown;
   }
@@ -71,6 +73,10 @@ declare module '@bitgo/utxo-lib' {
       hashType: number,
       isWitness: boolean,
     ): Buffer;
+    /** Append an input; scriptSig defaults to empty. Returns the input index. */
+    addInput(hash: Buffer | string, index: number, sequence?: number, scriptSig?: Buffer): number;
+    /** Append an output. Returns the output index. */
+    addOutput(scriptPubKey: Buffer, value: number): number;
     ins: Array<{ hash: Buffer; index: number; script: Buffer; sequence: number }>;
     outs: Array<{ value: number; script: Buffer }>;
   }

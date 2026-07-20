@@ -33,7 +33,7 @@ const MIN_FEE = 10_000n;
  * only) from "smart output that failed to decode" (dangerous — the UTXO may
  * carry token value we cannot see).
  */
-function isSmartTransactionScript(script: Buffer): boolean {
+export function isSmartTransactionScript(script: Buffer): boolean {
   try {
     const chunks = bscript.decompile(script);
     if (chunks === null) return false;
