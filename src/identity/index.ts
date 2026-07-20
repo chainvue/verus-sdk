@@ -1074,9 +1074,9 @@ export function buildAndSignIdentityUpdate(
     const currentMinSigs = identity.min_sigs?.toNumber?.() ?? 1;
     if (currentMinSigs > 1) {
       throw new TransactionBuildError(
-        `this identity requires ${currentMinSigs} signatures (min_sigs > 1); the SDK signs with a single ` +
-          `WIF and the bundled fork cannot multi-sign a CryptoCondition input, so a valid ${operation} ` +
-          `transaction cannot be produced. Use the daemon for multisig identities.`,
+        `this identity requires ${currentMinSigs} signatures (min_sigs > 1); this single-key path signs ` +
+          `with one WIF. Use the multisig flow (buildMultisigIdentityUpdate + addIdentitySignature, the ` +
+          `\`identityMultisig\` namespace) to collect m-of-n signatures for a ${operation}.`,
       );
     }
   }
