@@ -13,19 +13,24 @@
  * `takeoffer`: `Identity.fromJson(getidentity)` with `setPrimaryAddresses`, then
  * `buildIdentityScript` (verified on VRSCTEST).
  *
- * This module covers SELLING an identity (offer the identity, want a currency).
- * Buying an identity (offer a currency, want an identity) is the mirror and
- * follows.
+ * Both directions are covered and live-proven on VRSCTEST:
+ *   - SELL (offer the identity, want a currency): the maker spends the identity's
+ *     current primary output with 0x83; the taker appends the transferred identity
+ *     and pays. No funding tx.
+ *   - BUY (offer a currency, want an identity): the maker funds the currency into a
+ *     commitment and offers it, wanting the identity transferred to the buyer; the
+ *     taker (the identity's owner) spends the identity's current output and takes
+ *     the currency.
  */
-import { Transaction, Identity, type VerusCLIVerusIDJson } from '../fork/boundary.js';
+import { Transaction, TransactionBuilder, Identity, type VerusCLIVerusIDJson } from '../fork/boundary.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
-import { getNetwork, assertNativeConservation } from '../signing/index.js';
+import { getNetwork, assertNativeConservation, resolveExpiryHeight } from '../signing/index.js';
 import { buildIdentityScript, buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
-import { signTakerInputs, type TakerInput } from './sign.js';
+import { signOfferInput, signTakerInputs, type TakerInput } from './sign.js';
 import { buildOffer, type FundedOutpoint, type BuildOfferResult } from './maker.js';
 import { toSafeNumber, addressToScriptPubKey } from '../utils/index.js';
 import { parseAddress, parseIAddress } from '../core/brands.js';
-import { NETWORK_CONFIG } from '../constants/index.js';
+import { NETWORK_CONFIG, VERSION_GROUP_ID } from '../constants/index.js';
 import { TransactionBuildError } from '../errors.js';
 import type { Network } from '../constants/index.js';
 import type { Utxo } from '../types/index.js';
@@ -35,6 +40,26 @@ function nativePaymentScript(address: string): Buffer {
   return address.startsWith('i')
     ? identityPaymentScript(parseIAddress(address, 'address'))
     : addressToScriptPubKey(address);
+}
+
+/**
+ * Build the TRANSFERRED identity output: the given identity with its primary
+ * addresses replaced by `newPrimaryAddresses`, everything else preserved. Built
+ * byte-identically to the daemon's makeoffer/takeoffer identity transfer.
+ */
+function buildTransferredIdentity(identityJson: VerusCLIVerusIDJson, newPrimaryAddresses: string[]): Buffer {
+  const identity = Identity.fromJson(identityJson);
+  identity.setPrimaryAddresses(newPrimaryAddresses);
+  return buildIdentityScript(identity);
+}
+
+/** An offer MUST expire at a real future height; the daemon rejects 0 as expired. */
+function assertExpiryHeight(expiryHeight: number): void {
+  if (!Number.isInteger(expiryHeight) || expiryHeight <= 0) {
+    throw new TransactionBuildError(
+      'expiryHeight (a positive future block height) is required for an offer; the daemon rejects a 0/never-expiring offer as expired.',
+    );
+  }
 }
 
 export interface BuildSellIdentityOfferParams {
@@ -116,10 +141,7 @@ export function completeSellIdentityOffer(
   // Output 1: the TRANSFERRED identity — the same identity with its primary
   // addresses replaced by the taker's. Everything else (revocation/recovery,
   // name, parent, contentmap, flags) is preserved, byte-identical to the daemon.
-  const identity = Identity.fromJson(params.identityJson);
-  identity.setPrimaryAddresses(params.newPrimaryAddresses);
-  const identityScript = buildIdentityScript(identity);
-  tx.addOutput(identityScript, 0);
+  tx.addOutput(buildTransferredIdentity(params.identityJson, params.newPrimaryAddresses), 0);
 
   // The taker's own UTXOs fund the wanted currency (paid to output 0) + the fee.
   const wantedTokenReq = wantingNative
@@ -161,6 +183,152 @@ export function completeSellIdentityOffer(
   // native inputs must equal the wanted-native output (if any) + change + fee.
   const takerNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
   assertNativeConservation([{ satoshis: takerNativeIn }], tx.outs, selection.fee, 'takeSellIdentityOffer');
+
+  const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
+  return { swapTx: signedTx, txid };
+}
+
+// ─── Buying an identity (offer a currency, want an identity) ─────────
+
+export interface BuildBuyIdentityOfferParams {
+  wif: string;
+  /** The currency commitment from buildOfferFunding (after broadcast). */
+  commitment: FundedOutpoint;
+  /** The identity to acquire, as returned by the daemon's `getidentity` (its `.identity`). */
+  identityJson: VerusCLIVerusIDJson;
+  /** The buyer's new primary (control) addresses for the acquired identity. */
+  buyerPrimaryAddresses: string[];
+  /** A real future block height; the daemon rejects a 0/never-expiring offer. */
+  expiryHeight: number;
+}
+
+/**
+ * Build the maker's half of a buy-identity offer: spend the currency commitment
+ * with 0x83 into the single WANTED output — the identity transferred to the
+ * buyer's control. A taker who owns the identity completes the swap by spending
+ * the identity's current output and taking the offered currency.
+ */
+export function buildBuyIdentityOffer(
+  params: BuildBuyIdentityOfferParams,
+  network: Network,
+): BuildOfferResult {
+  assertExpiryHeight(params.expiryHeight);
+  if (params.buyerPrimaryAddresses.length === 0) {
+    throw new TransactionBuildError('buildBuyIdentityOffer: buyerPrimaryAddresses must not be empty');
+  }
+  const verusNetwork = getNetwork(network === 'testnet');
+
+  // The single wanted output: the identity transferred to the buyer.
+  const wantedScript = buildTransferredIdentity(params.identityJson, params.buyerPrimaryAddresses);
+
+  const txb = new TransactionBuilder(verusNetwork);
+  txb.setVersion(4);
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
+  txb.setVersionGroupId(VERSION_GROUP_ID);
+  txb.addInput(
+    Buffer.from(params.commitment.txid, 'hex').reverse(),
+    params.commitment.vout,
+    0xffffffff,
+    Buffer.from(params.commitment.script, 'hex'),
+  );
+  txb.addOutput(wantedScript, 0);
+
+  const { signedTx, txid } = signOfferInput(
+    txb.buildIncomplete().toHex(),
+    0,
+    Buffer.from(params.commitment.script, 'hex'),
+    params.commitment.value,
+    params.wif,
+    network,
+  );
+  return { offerTx: signedTx, txid };
+}
+
+export interface CompleteBuyIdentityOfferParams {
+  /** The maker's half-signed buy-identity offer (from buildBuyIdentityOffer). */
+  offerTx: string;
+  /** What the maker offers (the value in the commitment input 0), native or token. */
+  offered: { currency: string; amount: bigint };
+  /** The seller's identity output being sold (read from chain): txid/vout/script hex. */
+  identityOutput: { txid: string; vout: number; script: string };
+  /** Where the seller receives the offered currency. */
+  sellerReceiveAddress: string;
+  /** The seller's native UTXOs to cover the miner fee (the identity input carries none). */
+  takerUtxos: Utxo[];
+  changeAddress: string;
+  wif: string;
+}
+
+export interface CompleteBuyIdentityOfferResult {
+  swapTx: string;
+  txid: string;
+}
+
+/**
+ * Complete a buy-identity offer: give up the identity (spend its current output),
+ * receive the offered currency, and sign the seller's side. The identity flows to
+ * the buyer via the maker's already-committed output 0; the seller adds the
+ * identity input, the currency-to-seller output, native for the fee, and change.
+ */
+export function completeBuyIdentityOffer(
+  params: CompleteBuyIdentityOfferParams,
+  network: Network,
+): CompleteBuyIdentityOfferResult {
+  const verusNetwork = getNetwork(network === 'testnet');
+  const systemId = NETWORK_CONFIG[network].chainId;
+  const offeringNative = params.offered.currency === systemId;
+
+  if (params.offered.amount <= 0n) {
+    throw new TransactionBuildError('completeBuyIdentityOffer: offered.amount must be positive');
+  }
+
+  const tx = Transaction.fromHex(params.offerTx, verusNetwork);
+  if (tx.ins.length !== 1 || tx.outs.length !== 1) {
+    throw new TransactionBuildError('completeBuyIdentityOffer: expected a maker offer partial (1 input, 1 output)');
+  }
+
+  // The native value on the maker's currency commitment (input 0): the offered
+  // amount if native, else 0 (a token commitment carries 0 native).
+  const commitmentNative = offeringNative ? params.offered.amount : 0n;
+
+  // Input 1: the seller's identity output (spent, transferring the identity away).
+  const idIdx = tx.addInput(
+    Buffer.from(params.identityOutput.txid, 'hex').reverse(),
+    params.identityOutput.vout,
+    0xffffffff,
+  );
+  const takerInputs: TakerInput[] = [
+    { index: idIdx, prevOutScript: Buffer.from(params.identityOutput.script, 'hex'), value: 0n },
+  ];
+
+  // Output 1: the offered currency paid to the seller — plain payment for the
+  // native coin, a reserve output for a token.
+  if (offeringNative) {
+    tx.addOutput(nativePaymentScript(params.sellerReceiveAddress), toSafeNumber(params.offered.amount));
+  } else {
+    const out = buildTokenChangeOutput(
+      parseAddress(params.sellerReceiveAddress, 'sellerReceiveAddress'),
+      new Map([[params.offered.currency, params.offered.amount]]),
+    );
+    tx.addOutput(out.script, 0);
+  }
+
+  // The seller funds only the miner fee (native), from their own UTXOs.
+  const selection = selectUtxos(params.takerUtxos, 0n, new Map(), 3, systemId, undefined, true, 300);
+  for (const u of selection.selected) {
+    const idx = tx.addInput(Buffer.from(u.txid, 'hex').reverse(), u.outputIndex, 0xffffffff);
+    takerInputs.push({ index: idx, prevOutScript: Buffer.from(u.script, 'hex'), value: u.satoshis });
+  }
+
+  // Output 2: the seller's native change, if any.
+  if (selection.nativeChange > 0n) {
+    tx.addOutput(nativePaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+  }
+
+  // Native conservation: the commitment's native (funds the offered-native output
+  // when offering native, else 0) + the seller's native inputs = outputs + fee.
+  const sellerNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
+  assertNativeConservation([{ satoshis: commitmentNative + sellerNativeIn }], tx.outs, selection.fee, 'takeBuyIdentityOffer');
 
   const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
   return { swapTx: signedTx, txid };

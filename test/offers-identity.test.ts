@@ -9,8 +9,14 @@
  */
 import { describe, it, expect } from 'vitest';
 import pkg from 'verus-typescript-primitives';
-import { buildSellIdentityOffer, completeSellIdentityOffer } from '../src/offers/identity.js';
-import { buildIdentityScript } from '../src/identity/index.js';
+import {
+  buildSellIdentityOffer,
+  completeSellIdentityOffer,
+  buildBuyIdentityOffer,
+  completeBuyIdentityOffer,
+} from '../src/offers/identity.js';
+import { buildIdentityScript, buildCommitmentScript } from '../src/identity/index.js';
+import { parseRAddress } from '../src/core/brands.js';
 import { Transaction, script as bscript } from '../src/fork/boundary.js';
 import { getNetwork } from '../src/signing/index.js';
 import { NETWORK, makeFundingUtxo } from './fixtures/index.js';
@@ -144,5 +150,92 @@ describe('completeSellIdentityOffer', () => {
         NETWORK,
       ),
     ).toThrow(/newPrimaryAddresses must not be empty/);
+  });
+});
+
+describe('buildBuyIdentityOffer', () => {
+  // A native currency commitment the buyer funds and offers.
+  function commitment() {
+    const script = buildCommitmentScript(Buffer.alloc(32, 0), parseRAddress(TEST_ADDRESS)).toString('hex');
+    return { txid: 'cd'.repeat(32), vout: 0, value: 3n * 100_000_000n, script };
+  }
+
+  it('spends the currency commitment into the identity transferred to the buyer', () => {
+    const offer = buildBuyIdentityOffer(
+      {
+        wif: TEST_WIF,
+        commitment: commitment(),
+        identityJson: SELLTEST5B_JSON,
+        buyerPrimaryAddresses: [TAKER_CONTROL],
+        expiryHeight: 1_200_000,
+      },
+      NETWORK,
+    );
+    const net = getNetwork(true);
+    const tx = Transaction.fromHex(offer.offerTx, net);
+    expect(tx.ins.length).toBe(1);
+    expect(tx.outs.length).toBe(1);
+    // out[0] = the identity transferred to the buyer, byte-identical to the daemon.
+    expect(tx.outs[0]!.script.toString('hex')).toBe(DAEMON_TRANSFERRED_OUTPUT);
+    expect(tx.outs[0]!.value).toBe(0);
+    const ff = (bscript.decompile(tx.ins[0]!.script) ?? []).find((c): c is Buffer => Buffer.isBuffer(c));
+    expect(ff!.subarray(0, 2).toString('hex')).toBe('0183');
+  });
+
+  it('rejects empty buyerPrimaryAddresses', () => {
+    expect(() =>
+      buildBuyIdentityOffer(
+        {
+          wif: TEST_WIF,
+          commitment: commitment(),
+          identityJson: SELLTEST5B_JSON,
+          buyerPrimaryAddresses: [],
+          expiryHeight: 1_200_000,
+        },
+        NETWORK,
+      ),
+    ).toThrow(/buyerPrimaryAddresses must not be empty/);
+  });
+});
+
+describe('completeBuyIdentityOffer', () => {
+  function makeBuyOffer() {
+    const script = buildCommitmentScript(Buffer.alloc(32, 0), parseRAddress(TEST_ADDRESS)).toString('hex');
+    return buildBuyIdentityOffer(
+      {
+        wif: TEST_WIF,
+        commitment: { txid: 'cd'.repeat(32), vout: 0, value: 3n * 100_000_000n, script },
+        identityJson: SELLTEST5B_JSON,
+        buyerPrimaryAddresses: [TAKER_CONTROL],
+        expiryHeight: 1_200_000,
+      },
+      NETWORK,
+    ).offerTx;
+  }
+
+  it('spends the identity output, pays the seller, signs the seller side', () => {
+    const net = getNetwork(true);
+    const swap = completeBuyIdentityOffer(
+      {
+        offerTx: makeBuyOffer(),
+        offered: { currency: VRSCTEST, amount: 3n * 100_000_000n },
+        identityOutput: { txid: 'ab'.repeat(32), vout: 1, script: SELLTEST5B_OUTPUT },
+        sellerReceiveAddress: TEST_ADDRESS,
+        takerUtxos: [makeFundingUtxo('bb', 100_000_000n)], // native for the fee
+        changeAddress: TEST_ADDRESS,
+        wif: TEST_WIF,
+      },
+      NETWORK,
+    );
+    const tx = Transaction.fromHex(swap.swapTx, net);
+    // out[0] = identity to buyer (kept). out[1] = offered currency to seller.
+    expect(tx.outs[0]!.script.toString('hex')).toBe(DAEMON_TRANSFERRED_OUTPUT);
+    expect(tx.outs[1]!.value).toBe(3 * 100_000_000);
+    // in[0] = maker commitment (0x83); in[1] = the seller's identity output.
+    const in0f = (bscript.decompile(tx.ins[0]!.script) ?? []).find((c): c is Buffer => Buffer.isBuffer(c));
+    expect(in0f!.subarray(0, 2).toString('hex')).toBe('0183');
+    expect(tx.ins.length).toBeGreaterThanOrEqual(2);
+    // the identity input (index 1) is signed.
+    expect(tx.ins[1]!.script.length).toBeGreaterThan(0);
   });
 });
