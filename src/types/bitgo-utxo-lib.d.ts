@@ -84,6 +84,10 @@ declare module '@bitgo/utxo-lib' {
   /** One CryptoCondition signature (`SmartTransactionSignature(version, m, pubKey, sig64)`). */
   export class SmartTransactionSignature {
     constructor(version: number, numSignatures: number, pubKey: Buffer, oneSignature: Buffer);
+    /** The signer's compressed public key (as parsed/serialized in the fulfillment). */
+    pubKeyData: Buffer;
+    /** The 64-byte r||s signature. */
+    oneSignature: Buffer;
   }
 
   /**
@@ -95,6 +99,10 @@ declare module '@bitgo/utxo-lib' {
   export class SmartTransactionSignatures {
     constructor(version: number, hashType: number, signatures: SmartTransactionSignature[]);
     toChunk(): Buffer;
+    /** The parsed signature entries (populated by fromChunk). */
+    signatures: SmartTransactionSignature[];
+    /** Parse an existing fulfillment chunk into a signatures container. */
+    static fromChunk(chunk: Buffer): SmartTransactionSignatures;
   }
 
   export class TransactionBuilder {

@@ -132,3 +132,12 @@ export * as currency from './currency/index.js';
 export * as utils from './utils/index.js';
 // Curated public subset (see offers/public.ts); the fulfillment signers are internal.
 export * as offers from './offers/public.js';
+// m-of-n VerusID updates: collect signatures from separate signers offline.
+export * as identityMultisig from './identity/multisig.js';
+export type {
+  MultisigIdentityUpdateParams,
+  MultisigIdentityUpdateResult,
+  IdentityInputRef,
+  AddIdentitySignatureParams,
+  AddIdentitySignatureResult,
+} from './identity/multisig.js';

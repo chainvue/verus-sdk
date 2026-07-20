@@ -146,3 +146,37 @@ const { valid } = sdk.verifyMessage({
 
 `blockHeight` binds the signature to a chain height (part of what the daemon
 verifies); pass the height the message was signed at when verifying.
+
+## Multisig (m-of-n) identities
+
+A VerusID with `minimumsignatures > 1` is controlled by an m-of-n set of primary
+keys. The single-key `updateIdentity` fails closed for such an identity — spending
+its output needs m signatures on one CryptoCondition input, from signers who never
+share keys. Use the two-step multisig flow (also in the `identityMultisig`
+namespace):
+
+```ts
+// A funder builds the funded update and signs the fee inputs; the identity CC
+// input is left open. `newIdentity` is the desired new state (a getidentity JSON).
+const built = sdk.buildMultisigIdentityUpdate({
+  funderWif,                               // pays the fee (funding UTXOs are P2PKH it controls)
+  identityUtxo: { txid, vout, script },    // the identity's current on-chain output (0 native)
+  currentPrimaryAddresses: [addrA, addrB], // the CURRENT primary addresses, IN ORDER
+  minSignatures: 2,                        // the identity's current min_sigs
+  newIdentity,                             // Identity JSON with your changes applied
+  funding, changeAddress, expiryHeight: tip + 20,
+});
+// → { partialTx, identityInput, collected: 0, minSignatures, currentPrimaryAddresses }
+
+// Each authority adds their signature. Pass partialTx between signers (any order).
+const s1 = sdk.addIdentitySignature({ ...built, wif: wifA });   // collected 1
+const s2 = sdk.addIdentitySignature({ ...s1,   wif: wifB });    // collected 2, complete
+// when s2.complete, broadcast s2.partialTx
+```
+
+Signatures are merged in `currentPrimaryAddresses` order (the daemon's
+convention), deduped per key, and `complete` flips once `minSignatures` are
+collected. The funder need not be an authority — a separate key can pay the fee
+while the authorities sign only the identity input. This drives the fork's
+low-level `SmartTransactionSignatures` primitive directly; the layout and both
+the 2-of-2 and 1-of-2 paths are proven byte-for-byte and live on VRSCTEST.

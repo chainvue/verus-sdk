@@ -59,6 +59,13 @@ import * as messageModule from './message/index.js';
 import * as currencyModule from './currency/index.js';
 import * as keysModule from './keys/index.js';
 import * as offersModule from './offers/public.js';
+import * as multisigModule from './identity/multisig.js';
+import type {
+  MultisigIdentityUpdateParams,
+  MultisigIdentityUpdateResult,
+  AddIdentitySignatureParams,
+  AddIdentitySignatureResult,
+} from './identity/multisig.js';
 
 export class VerusSDK {
   readonly network: Network;
@@ -161,6 +168,20 @@ export class VerusSDK {
       this.network,
       'revoke',
     );
+  }
+
+  /**
+   * Build the funded half of an m-of-n (multisig) identity update: funding inputs
+   * signed by the funder, the identity CC input left open. Pass the result to
+   * `addIdentitySignature` for each authority until `minSignatures` are collected.
+   */
+  buildMultisigIdentityUpdate(params: MultisigIdentityUpdateParams): MultisigIdentityUpdateResult {
+    return multisigModule.buildMultisigIdentityUpdate(params, this.network);
+  }
+
+  /** Add one authority signature to a multisig identity update (see buildMultisigIdentityUpdate). */
+  addIdentitySignature(params: AddIdentitySignatureParams): AddIdentitySignatureResult {
+    return multisigModule.addIdentitySignature(params, this.network);
   }
 
   /** Recover an identity (requires recovery authority key) */

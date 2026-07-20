@@ -34,7 +34,8 @@ const { signedTx, txid, fee } = sdk.transfer({
   (full control over multi-output / cross-chain sends).
 - **VerusID** — `createCommitment` → `registerIdentity` (incl. sub-IDs), then
   `updateIdentity` / `lockIdentity` / `unlockIdentity` / `revokeIdentity` /
-  `recoverIdentity`, plus `signMessage` / `verifyMessage`.
+  `recoverIdentity`, plus `signMessage` / `verifyMessage`. Multisig (m-of-n)
+  identities update via `buildMultisigIdentityUpdate` + `addIdentitySignature`.
 - **Marketplace offers** — build and complete fully on-chain atomic swaps:
   currency↔currency (`buildOfferFunding` → `buildOffer` → `completeOffer`), and
   VerusID sell / buy / swap (`build*IdentityOffer` / `complete*IdentityOffer`).
