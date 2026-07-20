@@ -1,5 +1,17 @@
 # Changelog
 
+# [0.12.0](https://github.com/chainvue/verus-sdk/compare/v0.11.0...v0.12.0) (2026-07-20)
+
+
+### Bug Fixes
+
+* **offers:** reject non-P2PKH fee UTXOs across all taker fee funding ([3b16e1a](https://github.com/chainvue/verus-sdk/commit/3b16e1aa35ab904b18571ef288cae22cb2be1d4a))
+
+
+### Features
+
+* **offers:** reclaim an unaccepted offer (buildReclaimOffer) ([5816935](https://github.com/chainvue/verus-sdk/commit/58169351f43a0907ce61c07afaed967579140418))
+
 # [0.11.0](https://github.com/chainvue/verus-sdk/compare/v0.10.0...v0.11.0) (2026-07-20)
 
 
