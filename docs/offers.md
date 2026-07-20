@@ -68,6 +68,35 @@ const swap = sdk.completeOffer({
 `offered.currency` / `want.currency` is the chain id for the native coin or an
 i-address for a token; the four native/token combinations are all handled.
 
+## Cancelling an offer
+
+Until a taker completes it, the offered asset sits in the maker's own funding
+commitment. If the deal never happens, reclaim it — spend that commitment back to
+the maker (signed `SIGHASH_ALL`). It needs only the maker's key and the commitment
+outpoint.
+
+```ts
+const reclaim = sdk.buildReclaimOffer({
+  wif,
+  commitment: funding.commitment,          // the outpoint from buildOfferFunding
+  offered: { currency: CHAIN_ID, amount: 5n * 100_000_000n },
+  makerAddress,                            // where the reclaimed asset is returned
+  // feeUtxos: [...],                       // REQUIRED for a token reclaim (see below)
+  expiryHeight: tip + 20,
+});
+// → { reclaimTx, txid }  — broadcast reclaimTx.
+```
+
+For a **native** offer the miner fee comes out of the reclaimed value (no extra
+inputs). For a **token** offer the commitment carries no native coin, so pass
+`feeUtxos` — native UTXOs controlled by the same `wif` — to fund the fee; the
+token returns in full. A token-bearing or foreign-key fee UTXO is rejected with a
+typed error rather than silently losing value.
+
+This is the maker's unilateral cancel of an SDK-built offer. It is distinct from
+the daemon's `closeoffers`, which cancels the daemon's on-chain *posted* offers (a
+different commitment the SDK does not create).
+
 ## Sell a VerusID for a currency
 
 Selling an identity needs **no funding transaction** — the maker spends the

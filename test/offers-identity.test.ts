@@ -464,7 +464,7 @@ describe('completeSwapIdentityOffer', () => {
     // P2PKH to a different address than TEST_WIF's — a doomed signature otherwise.
     const foreignUtxo = { txid: 'fa'.repeat(32), outputIndex: 0, satoshis: 100_000_000n, script: makeP2PKHScript(TEST_ADDRESS_B) };
     expect(() => completeSwapIdentityOffer(swapArgs([foreignUtxo]), NETWORK)).toThrow(
-      /not controlled by the provided wif/,
+      /must be a native P2PKH output controlled by the provided wif/,
     );
   });
 });

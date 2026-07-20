@@ -27,7 +27,7 @@
  *     offered identity. No currency moves — the taker funds only the miner fee.
  */
 import { Transaction, TransactionBuilder, Identity, ECPair, type VerusCLIVerusIDJson } from '../fork/boundary.js';
-import { selectUtxos, assertTokenConservation, isSmartTransactionScript } from '../utxo/index.js';
+import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
 import { getNetwork, assertNativeConservation, resolveExpiryHeight } from '../signing/index.js';
 import { buildIdentityScript, buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { signOfferInput, signTakerInputs, type TakerInput } from './sign.js';
@@ -103,17 +103,20 @@ function fundFeeAndSignIdentityTaker(args: {
     );
   }
 
-  // Every native fee input must be P2PKH controlled by `wif` (CC inputs — the
-  // identity — are added by the caller and signed by the key that controls them).
+  // Every fee input must be a native P2PKH output controlled by `wif`. Rejecting
+  // anything else — including CryptoCondition outputs, whose control can't be
+  // verified offline — fails closed with a typed error instead of a doomed,
+  // daemon-rejected tx. (The identity CC input is a caller-supplied priorInput,
+  // not a selected fee UTXO, and is signed by the key that controls it.)
   const expectedScript = addressToScriptPubKey(
     (ECPair.fromWIF(args.wif, verusNetwork) as { getAddress(): string }).getAddress(),
   ).toString('hex');
 
   const takerInputs: TakerInput[] = [...args.priorInputs];
   for (const u of selection.selected) {
-    if (!isSmartTransactionScript(Buffer.from(u.script, 'hex')) && u.script !== expectedScript) {
+    if (u.script !== expectedScript) {
       throw new TransactionBuildError(
-        `${args.label}: fee UTXO ${u.txid}:${u.outputIndex} is not controlled by the provided wif (its scriptPubKey does not match the wif's address).`,
+        `${args.label}: fee UTXO ${u.txid}:${u.outputIndex} must be a native P2PKH output controlled by the provided wif.`,
       );
     }
     const idx = args.tx.addInput(Buffer.from(u.txid, 'hex').reverse(), u.outputIndex, 0xffffffff);

@@ -38,7 +38,8 @@ const { signedTx, txid, fee } = sdk.transfer({
 - **Marketplace offers** — build and complete fully on-chain atomic swaps:
   currency↔currency (`buildOfferFunding` → `buildOffer` → `completeOffer`), and
   VerusID sell / buy / swap (`build*IdentityOffer` / `complete*IdentityOffer`).
-  Native coin, tokens, and identities, in every combination.
+  Native coin, tokens, and identities, in every combination — plus
+  `buildReclaimOffer` to cancel an unaccepted offer and reclaim the funds.
 - **Helpers** — `VerusSDK.generateWif()`, `deriveAddress(wif)`,
   `deriveIdentityAddress(name, parent?)`, `validateAddress`, `validateWif`;
   `utils.summarizeSignedTransaction(hex)` decodes a signed tx (txid, spent
