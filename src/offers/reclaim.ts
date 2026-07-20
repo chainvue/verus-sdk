@@ -19,7 +19,7 @@
  *             by `wif`) fund the miner fee; the token returns in full.
  */
 import { Transaction, TransactionBuilder, ECPair } from '../fork/boundary.js';
-import { selectUtxos, estimateFee, isSmartTransactionScript } from '../utxo/index.js';
+import { selectUtxos, estimateFee } from '../utxo/index.js';
 import { getNetwork, assertNativeConservation, resolveExpiryHeight } from '../signing/index.js';
 import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { signTakerInputs, type TakerInput } from './sign.js';
@@ -35,7 +35,12 @@ export interface ReclaimOfferParams {
   wif: string;
   /** The funding commitment to reclaim (the `commitment` from buildOfferFunding). */
   commitment: FundedOutpoint;
-  /** What the commitment holds: the native coin (currency = chain id) or a token. */
+  /**
+   * What the commitment holds: the native coin (currency = chain id) or a token.
+   * `amount` MUST equal the amount originally funded into the commitment — it is
+   * the value being reclaimed, and nothing in the outpoint independently carries
+   * a token amount. A mismatch produces a value-imbalanced tx the daemon rejects.
+   */
   offered: { currency: string; amount: bigint };
   /** Where the reclaimed asset is returned (an address the `wif` controls). */
   makerAddress: string;
@@ -139,13 +144,16 @@ export function buildReclaimOffer(params: ReclaimOfferParams, network: Network):
       'buildReclaimOffer: feeUtxos must carry only the native coin; a token-bearing UTXO was selected and its reserve value would be lost.',
     );
   }
+  // Fee UTXOs must be native P2PKH controlled by `wif`. Rejecting anything else
+  // (including CryptoCondition outputs, whose control can't be verified offline)
+  // fails closed with a typed error instead of a doomed, daemon-rejected tx.
   const expectedFeeScript = addressToScriptPubKey(
     (ECPair.fromWIF(params.wif, verusNetwork) as { getAddress(): string }).getAddress(),
   ).toString('hex');
   for (const u of selection.selected) {
-    if (!isSmartTransactionScript(Buffer.from(u.script, 'hex')) && u.script !== expectedFeeScript) {
+    if (u.script !== expectedFeeScript) {
       throw new TransactionBuildError(
-        `buildReclaimOffer: fee UTXO ${u.txid}:${u.outputIndex} is not controlled by the provided wif.`,
+        `buildReclaimOffer: fee UTXO ${u.txid}:${u.outputIndex} must be a native P2PKH output controlled by the provided wif.`,
       );
     }
     const idx = tx.addInput(Buffer.from(u.txid, 'hex').reverse(), u.outputIndex, 0xffffffff);

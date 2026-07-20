@@ -162,6 +162,6 @@ describe('buildReclaimOffer — token', () => {
         },
         NETWORK,
       ),
-    ).toThrow(/not controlled by the provided wif/);
+    ).toThrow(/must be a native P2PKH output controlled by the provided wif/);
   });
 });
