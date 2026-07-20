@@ -15,8 +15,10 @@
  * The taker tx does NOT byte-match the daemon (each wallet selects its own UTXOs);
  * correctness is enforced by value conservation and proven by the live round-trip.
  *
- * This covers taking an offer of the NATIVE coin for a token (offered = native,
- * wanted = token) — the maker flow's mirror. Other combinations follow.
+ * This covers all four currency combinations: the offered and wanted assets may
+ * each be the native coin or a token. The offered asset flows self-contained from
+ * input 0 (the commitment) to output 1 (the taker); the taker's own UTXOs fund
+ * only the wanted asset (paid to output 0) plus the miner fee.
  */
 import { Transaction } from '../fork/boundary.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
@@ -33,9 +35,9 @@ import type { Utxo } from '../types/index.js';
 export interface CompleteOfferParams {
   /** The maker's half-signed offer transaction (from buildOffer). */
   offerTx: string;
-  /** What the maker offers (the value in the commitment input 0). Native only here. */
+  /** What the maker offers (the value in the commitment input 0), native or token. */
   offered: { currency: string; amount: bigint };
-  /** What the taker must pay (the maker's wanted output 0). A token here. */
+  /** What the taker must pay (the maker's wanted output 0), native or token. */
   want: { currency: string; amount: bigint };
   /** The taker's UTXOs — must hold the wanted currency + native for the fee. */
   takerUtxos: Utxo[];
@@ -50,19 +52,26 @@ export interface CompleteOfferResult {
   txid: string;
 }
 
+/** A native payment script to an R-address (P2PKH) or i-address (pay-to-identity). */
+function nativePaymentScript(address: string): Buffer {
+  return address.startsWith('i')
+    ? identityPaymentScript(parseIAddress(address, 'address'))
+    : addressToScriptPubKey(address);
+}
+
 /**
- * Complete a native-for-token offer: take the maker's offer, pay the wanted token,
- * receive the offered native coin, and sign the taker's side.
+ * Complete an offer: take the maker's half-signed offer, pay the wanted asset,
+ * receive the offered asset, and sign the taker's side. The offered and wanted
+ * assets may each be the native coin or a token (all four combinations).
  */
 export function completeOffer(params: CompleteOfferParams, network: Network): CompleteOfferResult {
   const verusNetwork = getNetwork(network === 'testnet');
   const systemId = NETWORK_CONFIG[network].chainId;
+  const offeringNative = params.offered.currency === systemId;
+  const wantingNative = params.want.currency === systemId;
 
-  if (params.offered.currency !== systemId) {
-    throw new TransactionBuildError('completeOffer currently supports a native-coin offer (offered.currency must be the chain id)');
-  }
-  if (params.want.currency === systemId) {
-    throw new TransactionBuildError('completeOffer currently supports wanting a token (want.currency must not be the chain id)');
+  if (params.offered.amount <= 0n || params.want.amount <= 0n) {
+    throw new TransactionBuildError('completeOffer: offered.amount and want.amount must be positive');
   }
 
   const tx = Transaction.fromHex(params.offerTx, verusNetwork);
@@ -70,20 +79,35 @@ export function completeOffer(params: CompleteOfferParams, network: Network): Co
     throw new TransactionBuildError('completeOffer: expected a maker offer partial (1 input, 1 output)');
   }
 
-  // Output 1: the offered NATIVE coin paid to the taker.
-  const offeredScript = params.takerAddress.startsWith('i')
-    ? identityPaymentScript(parseIAddress(params.takerAddress, 'takerAddress'))
-    : addressToScriptPubKey(params.takerAddress);
-  tx.addOutput(offeredScript, toSafeNumber(params.offered.amount));
+  // The native value on the maker's commitment input (input 0): the offered
+  // amount if the offer is native, else 0 (a token commitment carries 0 native).
+  const commitmentNative = offeringNative ? params.offered.amount : 0n;
 
-  // Select the taker's UTXOs: cover the wanted token (paid to output 0) + the
-  // miner fee (native). The offered native (input 0 → output 1) cancels out, so
-  // the taker funds only the fee on the native side. numOutputs=3 (wanted, offered,
+  // Output 1: the OFFERED asset paid to the taker — a plain payment for the
+  // native coin, a reserve output (0 native) for a token. The offered asset
+  // flows from input 0 to here, self-contained.
+  if (offeringNative) {
+    tx.addOutput(nativePaymentScript(params.takerAddress), toSafeNumber(params.offered.amount));
+  } else {
+    const offeredOut = buildTokenChangeOutput(
+      parseAddress(params.takerAddress, 'takerAddress'),
+      new Map([[params.offered.currency, params.offered.amount]]),
+    );
+    tx.addOutput(offeredOut.script, 0);
+  }
+
+  // The taker's own UTXOs fund only the WANTED asset (paid to output 0) plus the
+  // miner fee. When the wanted asset is a token it is a required currency; when
+  // native it is required native on top of the fee. numOutputs=3 (wanted, offered,
   // change); +150 bytes accounts for the maker's input, which selectUtxos can't see.
+  const wantedTokenReq = wantingNative
+    ? new Map<string, bigint>()
+    : new Map([[params.want.currency, params.want.amount]]);
+  const requiredNative = wantingNative ? params.want.amount : 0n;
   const selection = selectUtxos(
     params.takerUtxos,
-    0n,
-    new Map([[params.want.currency, params.want.amount]]),
+    requiredNative,
+    wantedTokenReq,
     3,
     systemId,
     undefined,
@@ -104,27 +128,30 @@ export function completeOffer(params: CompleteOfferParams, network: Network): Co
     if (hasTokenChange) {
       const change = buildTokenChangeOutput(parseAddress(params.changeAddress, 'changeAddress'), selection.currencyChanges);
       tx.addOutput(change.script, toSafeNumber(selection.nativeChange));
-    } else if (params.changeAddress.startsWith('i')) {
-      tx.addOutput(identityPaymentScript(parseIAddress(params.changeAddress, 'changeAddress')), toSafeNumber(selection.nativeChange));
     } else {
-      tx.addOutput(addressToScriptPubKey(params.changeAddress), toSafeNumber(selection.nativeChange));
+      tx.addOutput(nativePaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
     }
   }
 
-  // Token conservation: taker's wanted-currency inputs == paid to the maker + change.
+  // Token conservation over the taker's own inputs: they provide the wanted token
+  // (paid to output 0) plus change. The offered token (input 0 → output 1) does
+  // not pass through taker inputs, so it is not asserted here — it is balanced by
+  // construction (the commitment carries exactly `offered.amount`).
   assertTokenConservation(
     selection.selected,
-    new Map([[params.want.currency, params.want.amount]]),
+    wantedTokenReq,
     selection.currencyChanges,
     systemId,
     'takeOffer',
   );
 
-  // Native conservation across the whole swap: the offered native (input 0) funds
-  // output 1, so it cancels; the taker's native inputs must equal the native
-  // change + the miner fee.
+  // Native conservation across the whole swap. allNativeIn = the commitment's
+  // native (funds the offered-native output when offering native, else 0) + the
+  // taker's native inputs (fund the wanted-native output when wanting native, the
+  // fee, and native change). This identity reduces to exactly `fee` in every
+  // combination.
   const takerNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
-  const allInputsNative = params.offered.amount + takerNativeIn;
+  const allInputsNative = commitmentNative + takerNativeIn;
   assertNativeConservation([{ satoshis: allInputsNative }], tx.outs, selection.fee, 'takeOffer');
 
   const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
