@@ -17,11 +17,11 @@ import {
   buildSwapIdentityOffer,
   completeSwapIdentityOffer,
 } from '../src/offers/identity.js';
-import { buildIdentityScript, buildCommitmentScript } from '../src/identity/index.js';
-import { parseRAddress } from '../src/core/brands.js';
+import { buildIdentityScript, buildCommitmentScript, buildTokenChangeOutput } from '../src/identity/index.js';
+import { parseRAddress, parseAddress } from '../src/core/brands.js';
 import { Transaction, script as bscript } from '../src/fork/boundary.js';
 import { getNetwork } from '../src/signing/index.js';
-import { NETWORK, makeFundingUtxo } from './fixtures/index.js';
+import { NETWORK, makeFundingUtxo, makeP2PKHScript, TEST_ADDRESS_B } from './fixtures/index.js';
 
 const { Identity } = pkg;
 
@@ -240,6 +240,27 @@ describe('completeBuyIdentityOffer', () => {
     // the identity input (index 1) is signed.
     expect(tx.ins[1]!.script.length).toBeGreaterThan(0);
   });
+
+  it('rejects a token-bearing fee UTXO (reserve value would be silently dropped)', () => {
+    const reserveScript = buildTokenChangeOutput(
+      parseAddress(TEST_ADDRESS),
+      new Map([['iJWuVTboQbmqL6QWaX6g8oPfWDTpvxtQ2a', 5n * 100_000_000n]]),
+    ).script.toString('hex');
+    expect(() =>
+      completeBuyIdentityOffer(
+        {
+          offerTx: makeBuyOffer(),
+          offered: { currency: VRSCTEST, amount: 3n * 100_000_000n },
+          identityOutput: { txid: 'ab'.repeat(32), vout: 1, script: SELLTEST5B_OUTPUT },
+          sellerReceiveAddress: TEST_ADDRESS,
+          takerUtxos: [{ txid: 'ef'.repeat(32), outputIndex: 0, satoshis: 100_000_000n, script: reserveScript }],
+          changeAddress: TEST_ADDRESS,
+          wif: TEST_WIF,
+        },
+        NETWORK,
+      ),
+    ).toThrow(/fee UTXOs must carry only the native coin/);
+  });
 });
 
 // ─── identity ↔ identity swap (5c) ───────────────────────────────────
@@ -329,6 +350,21 @@ describe('buildSwapIdentityOffer', () => {
       ),
     ).toThrow(/expiryHeight .* is required/);
   });
+
+  it('rejects empty makerPrimaryAddresses with its own (not the buy delegate) message', () => {
+    expect(() =>
+      buildSwapIdentityOffer(
+        {
+          wif: TEST_WIF,
+          offeredIdentityOutput: { txid: 'ab'.repeat(32), vout: 0, script: FOO1_OUTPUT },
+          wantedIdentityJson: FOO_JSON,
+          makerPrimaryAddresses: [],
+          expiryHeight: 1_200_000,
+        },
+        NETWORK,
+      ),
+    ).toThrow(/buildSwapIdentityOffer: makerPrimaryAddresses must not be empty/);
+  });
 });
 
 describe('completeSwapIdentityOffer', () => {
@@ -396,5 +432,39 @@ describe('completeSwapIdentityOffer', () => {
         NETWORK,
       ),
     ).toThrow(/takerPrimaryAddresses must not be empty/);
+  });
+
+  const SWAP_TOKEN_ID = 'iJWuVTboQbmqL6QWaX6g8oPfWDTpvxtQ2a';
+
+  function swapArgs(takerUtxos: ReturnType<typeof makeFundingUtxo>[]) {
+    return {
+      offerTx: makeSwapOffer(),
+      offeredIdentityJson: FOO1_JSON,
+      takerPrimaryAddresses: [TAKER_NEW],
+      wantedIdentityOutput: { txid: 'cd'.repeat(32), vout: 0, script: FOO_OUTPUT },
+      takerUtxos,
+      changeAddress: TEST_ADDRESS,
+      wif: TEST_WIF,
+    };
+  }
+
+  it('rejects a token-bearing fee UTXO (its reserve value would be silently dropped)', () => {
+    // A reserve output carrying native (to attract selection) + a token.
+    const reserveScript = buildTokenChangeOutput(
+      parseAddress(TEST_ADDRESS),
+      new Map([[SWAP_TOKEN_ID, 5n * 100_000_000n]]),
+    ).script.toString('hex');
+    const tokenFeeUtxo = { txid: 'ef'.repeat(32), outputIndex: 0, satoshis: 100_000_000n, script: reserveScript };
+    expect(() => completeSwapIdentityOffer(swapArgs([tokenFeeUtxo]), NETWORK)).toThrow(
+      /fee UTXOs must carry only the native coin/,
+    );
+  });
+
+  it('rejects a native fee UTXO not controlled by the provided wif', () => {
+    // P2PKH to a different address than TEST_WIF's — a doomed signature otherwise.
+    const foreignUtxo = { txid: 'fa'.repeat(32), outputIndex: 0, satoshis: 100_000_000n, script: makeP2PKHScript(TEST_ADDRESS_B) };
+    expect(() => completeSwapIdentityOffer(swapArgs([foreignUtxo]), NETWORK)).toThrow(
+      /not controlled by the provided wif/,
+    );
   });
 });

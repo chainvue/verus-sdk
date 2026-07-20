@@ -73,8 +73,9 @@ export interface BuildOfferFundingResult {
 }
 
 /**
- * Step 1: fund the offer — lock the offered NATIVE value in a commitment output.
- * Broadcast the returned tx, then pass `commitment` to buildOffer.
+ * Step 1: fund the offer — lock the offered asset (the native coin or a token) in
+ * a commitment output. Broadcast the returned tx, then pass `commitment` to
+ * buildOffer.
  */
 export function buildOfferFunding(
   params: BuildOfferFundingParams,
@@ -196,7 +197,7 @@ export function buildOffer(params: BuildOfferParams, network: Network): BuildOff
 
   const txb = new TransactionBuilder(verusNetwork);
   txb.setVersion(4);
-  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight ?? 0));
+  txb.setExpiryHeight(resolveExpiryHeight(params.expiryHeight));
   txb.setVersionGroupId(VERSION_GROUP_ID);
   txb.addInput(
     Buffer.from(params.commitment.txid, 'hex').reverse(),

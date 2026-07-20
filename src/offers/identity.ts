@@ -26,8 +26,8 @@
  *     the taker (who owns the wanted identity) spends its output and receives the
  *     offered identity. No currency moves — the taker funds only the miner fee.
  */
-import { Transaction, TransactionBuilder, Identity, type VerusCLIVerusIDJson } from '../fork/boundary.js';
-import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
+import { Transaction, TransactionBuilder, Identity, ECPair, type VerusCLIVerusIDJson } from '../fork/boundary.js';
+import { selectUtxos, assertTokenConservation, isSmartTransactionScript } from '../utxo/index.js';
 import { getNetwork, assertNativeConservation, resolveExpiryHeight } from '../signing/index.js';
 import { buildIdentityScript, buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { signOfferInput, signTakerInputs, type TakerInput } from './sign.js';
@@ -64,6 +64,77 @@ function assertExpiryHeight(expiryHeight: number): void {
       'expiryHeight (a positive future block height) is required for an offer; the daemon rejects a 0/never-expiring offer as expired.',
     );
   }
+}
+
+/**
+ * Fund the miner fee for an identity-offer taker (buy / swap) and sign their side.
+ *
+ * Both completions spend an identity input (0 native) already added by the caller,
+ * plus native UTXOs for the fee only. The fee UTXOs must be the NATIVE coin
+ * (P2PKH) controlled by `wif`, and this is enforced fail-closed:
+ *   - a token-bearing (reserve) UTXO is rejected — this flow builds no reserve
+ *     change output, so its token value would be silently dropped; and
+ *   - a native UTXO whose scriptPubKey doesn't match `wif`'s address is rejected —
+ *     it would otherwise produce a signature the daemon only rejects at broadcast.
+ *
+ * `extraInputNative` is the native carried by the maker's committed input (the
+ * offered amount for a native buy offer, else 0).
+ */
+function fundFeeAndSignIdentityTaker(args: {
+  tx: Transaction;
+  priorInputs: TakerInput[];
+  extraInputNative: bigint;
+  takerUtxos: Utxo[];
+  changeAddress: string;
+  wif: string;
+  network: Network;
+  label: string;
+  extraOutputBytes: number;
+}): { swapTx: string; txid: string } {
+  const systemId = NETWORK_CONFIG[args.network].chainId;
+  const verusNetwork = getNetwork(args.network === 'testnet');
+  const selection = selectUtxos(args.takerUtxos, 0n, new Map(), 3, systemId, undefined, true, args.extraOutputBytes);
+
+  // Fee UTXOs must carry only the native coin: no reserve change output is built
+  // here, so a selected token-bearing UTXO would lose its reserve value.
+  if (selection.currencyChanges.size > 0) {
+    throw new TransactionBuildError(
+      `${args.label}: the fee UTXOs must carry only the native coin; a token-bearing UTXO was selected and its reserve value would be lost.`,
+    );
+  }
+
+  // Every native fee input must be P2PKH controlled by `wif` (CC inputs — the
+  // identity — are added by the caller and signed by the key that controls them).
+  const expectedScript = addressToScriptPubKey(
+    (ECPair.fromWIF(args.wif, verusNetwork) as { getAddress(): string }).getAddress(),
+  ).toString('hex');
+
+  const takerInputs: TakerInput[] = [...args.priorInputs];
+  for (const u of selection.selected) {
+    if (!isSmartTransactionScript(Buffer.from(u.script, 'hex')) && u.script !== expectedScript) {
+      throw new TransactionBuildError(
+        `${args.label}: fee UTXO ${u.txid}:${u.outputIndex} is not controlled by the provided wif (its scriptPubKey does not match the wif's address).`,
+      );
+    }
+    const idx = args.tx.addInput(Buffer.from(u.txid, 'hex').reverse(), u.outputIndex, 0xffffffff);
+    takerInputs.push({ index: idx, prevOutScript: Buffer.from(u.script, 'hex'), value: u.satoshis });
+  }
+
+  // Native change, if any (no currency moves through the fee inputs).
+  if (selection.nativeChange > 0n) {
+    args.tx.addOutput(nativePaymentScript(args.changeAddress), toSafeNumber(selection.nativeChange));
+  }
+
+  const feeNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
+  assertNativeConservation(
+    [{ satoshis: args.extraInputNative + feeNativeIn }],
+    args.tx.outs,
+    selection.fee,
+    args.label,
+  );
+
+  const { signedTx, txid } = signTakerInputs(args.tx.toHex(), takerInputs, args.wif, args.network);
+  return { swapTx: signedTx, txid };
 }
 
 export interface BuildSellIdentityOfferParams {
@@ -317,25 +388,19 @@ export function completeBuyIdentityOffer(
     tx.addOutput(out.script, 0);
   }
 
-  // The seller funds only the miner fee (native), from their own UTXOs.
-  const selection = selectUtxos(params.takerUtxos, 0n, new Map(), 3, systemId, undefined, true, 300);
-  for (const u of selection.selected) {
-    const idx = tx.addInput(Buffer.from(u.txid, 'hex').reverse(), u.outputIndex, 0xffffffff);
-    takerInputs.push({ index: idx, prevOutScript: Buffer.from(u.script, 'hex'), value: u.satoshis });
-  }
-
-  // Output 2: the seller's native change, if any.
-  if (selection.nativeChange > 0n) {
-    tx.addOutput(nativePaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
-  }
-
-  // Native conservation: the commitment's native (funds the offered-native output
-  // when offering native, else 0) + the seller's native inputs = outputs + fee.
-  const sellerNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
-  assertNativeConservation([{ satoshis: commitmentNative + sellerNativeIn }], tx.outs, selection.fee, 'takeBuyIdentityOffer');
-
-  const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
-  return { swapTx: signedTx, txid };
+  // The seller funds only the miner fee (native): select native-only UTXOs owned
+  // by wif, add change, assert conservation (commitment native + fee inputs), sign.
+  return fundFeeAndSignIdentityTaker({
+    tx,
+    priorInputs: takerInputs,
+    extraInputNative: commitmentNative,
+    takerUtxos: params.takerUtxos,
+    changeAddress: params.changeAddress,
+    wif: params.wif,
+    network,
+    label: 'takeBuyIdentityOffer',
+    extraOutputBytes: 300,
+  });
 }
 
 // ─── Swapping an identity for an identity (identity ↔ identity) ───────
@@ -368,6 +433,11 @@ export function buildSwapIdentityOffer(
   params: BuildSwapIdentityOfferParams,
   network: Network,
 ): BuildOfferResult {
+  // Validate here (with this function's own parameter name) rather than letting the
+  // buildBuyIdentityOffer delegate throw an error naming buyerPrimaryAddresses.
+  if (params.makerPrimaryAddresses.length === 0) {
+    throw new TransactionBuildError('buildSwapIdentityOffer: makerPrimaryAddresses must not be empty');
+  }
   return buildBuyIdentityOffer(
     {
       wif: params.wif,
@@ -416,7 +486,6 @@ export function completeSwapIdentityOffer(
   network: Network,
 ): CompleteSwapIdentityOfferResult {
   const verusNetwork = getNetwork(network === 'testnet');
-  const systemId = NETWORK_CONFIG[network].chainId;
 
   if (params.takerPrimaryAddresses.length === 0) {
     throw new TransactionBuildError('completeSwapIdentityOffer: takerPrimaryAddresses must not be empty');
@@ -440,25 +509,18 @@ export function completeSwapIdentityOffer(
     { index: idIdx, prevOutScript: Buffer.from(params.wantedIdentityOutput.script, 'hex'), value: 0n },
   ];
 
-  // The taker funds only the miner fee (native), from their own UTXOs. Two identity
-  // outputs + the maker input are already present but invisible to selectUtxos, so
-  // a generous byte allowance covers their fee contribution.
-  const selection = selectUtxos(params.takerUtxos, 0n, new Map(), 3, systemId, undefined, true, 500);
-  for (const u of selection.selected) {
-    const idx = tx.addInput(Buffer.from(u.txid, 'hex').reverse(), u.outputIndex, 0xffffffff);
-    takerInputs.push({ index: idx, prevOutScript: Buffer.from(u.script, 'hex'), value: u.satoshis });
-  }
-
-  // Output 2: the taker's native change, if any.
-  if (selection.nativeChange > 0n) {
-    tx.addOutput(nativePaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
-  }
-
-  // Native conservation: both identity inputs carry 0 native, so the taker's native
-  // inputs must equal the change + fee.
-  const takerNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
-  assertNativeConservation([{ satoshis: takerNativeIn }], tx.outs, selection.fee, 'takeSwapIdentityOffer');
-
-  const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
-  return { swapTx: signedTx, txid };
+  // The taker funds only the miner fee (native): both identity inputs carry 0
+  // native. Two identity outputs + the maker input are already present but
+  // invisible to selectUtxos, so a generous byte allowance covers their fee.
+  return fundFeeAndSignIdentityTaker({
+    tx,
+    priorInputs: takerInputs,
+    extraInputNative: 0n,
+    takerUtxos: params.takerUtxos,
+    changeAddress: params.changeAddress,
+    wif: params.wif,
+    network,
+    label: 'takeSwapIdentityOffer',
+    extraOutputBytes: 500,
+  });
 }
