@@ -1,5 +1,17 @@
 # Changelog
 
+# [0.13.0](https://github.com/chainvue/verus-sdk/compare/v0.12.0...v0.13.0) (2026-07-20)
+
+
+### Bug Fixes
+
+* **identity:** drop non-authority signatures when merging a multisig update ([999513a](https://github.com/chainvue/verus-sdk/commit/999513abcf2456e6a9a0d7a0bf6b3c75a6237c51))
+
+
+### Features
+
+* **identity:** m-of-n multisig VerusID updates (offline partial signing) ([a84c1c9](https://github.com/chainvue/verus-sdk/commit/a84c1c900766d94e7606aac77974347fe838ba8c)), closes [hi#level](https://github.com/hi/issues/level)
+
 # [0.12.0](https://github.com/chainvue/verus-sdk/compare/v0.11.0...v0.12.0) (2026-07-20)
 
 
