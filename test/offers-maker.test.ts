@@ -34,7 +34,7 @@ function makeNativeOffer() {
       wif: TEST_WIF,
       commitment: funding.commitment,
       want: { currency: OWNORA_ID, amount: 100_000n, address: TEST_ADDRESS },
-      expiryHeight: 0,
+      expiryHeight: 1_200_000, // a real future height — the daemon rejects 0 as expired
     },
     NETWORK,
   );
@@ -83,5 +83,20 @@ describe('offers — native maker flow', () => {
         NETWORK,
       ),
     ).toThrow(/offerAmount must be positive/);
+  });
+
+  it('rejects an offer with a 0 / never-expiring expiryHeight (daemon treats it as expired)', () => {
+    const funding = buildOfferFunding(
+      { wif: TEST_WIF, utxos: [makeFundingUtxo('aa', 100_000_000n)], changeAddress: TEST_ADDRESS, makerAddress: TEST_ADDRESS, offerAmount: 100_000n, expiryHeight: 0 },
+      NETWORK,
+    );
+    for (const bad of [0, -1, 1.5, undefined]) {
+      expect(() =>
+        buildOffer(
+          { wif: TEST_WIF, commitment: funding.commitment, want: { currency: OWNORA_ID, amount: 100_000n, address: TEST_ADDRESS }, expiryHeight: bad as number },
+          NETWORK,
+        ),
+      ).toThrow(/expiryHeight .* is required/);
+    }
   });
 });

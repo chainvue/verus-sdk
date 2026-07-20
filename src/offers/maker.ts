@@ -135,6 +135,20 @@ export function buildOffer(params: BuildOfferParams, network: Network): BuildOff
   if (params.want.amount <= 0n) {
     throw new TransactionBuildError('want.amount must be positive');
   }
+  // An offer MUST expire at a real future block height. Verified live on VRSCTEST:
+  // the daemon rejects an offer with expiryHeight 0 ("never expires") as expired
+  // and refuses to take it. This SDK is offline and can't check "future", but it
+  // fails closed on the one value the daemon definitively rejects. Pass
+  // currentBlockHeight + a margin (the daemon's own makeoffer uses +200).
+  if (
+    params.expiryHeight === undefined ||
+    !Number.isInteger(params.expiryHeight) ||
+    params.expiryHeight <= 0
+  ) {
+    throw new TransactionBuildError(
+      'expiryHeight (a positive future block height) is required for an offer; the daemon rejects a 0/never-expiring offer as expired. Use currentBlockHeight + a margin (e.g. +200).',
+    );
+  }
 
   // The single wanted output: a reserve output for a token, a plain payment for native.
   let wantedScript: Buffer;
