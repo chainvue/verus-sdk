@@ -14,6 +14,8 @@ import {
   completeSellIdentityOffer,
   buildBuyIdentityOffer,
   completeBuyIdentityOffer,
+  buildSwapIdentityOffer,
+  completeSwapIdentityOffer,
 } from '../src/offers/identity.js';
 import { buildIdentityScript, buildCommitmentScript } from '../src/identity/index.js';
 import { parseRAddress } from '../src/core/brands.js';
@@ -237,5 +239,162 @@ describe('completeBuyIdentityOffer', () => {
     expect(tx.ins.length).toBeGreaterThanOrEqual(2);
     // the identity input (index 1) is signed.
     expect(tx.ins[1]!.script.length).toBeGreaterThan(0);
+  });
+});
+
+// ─── identity ↔ identity swap (5c) ───────────────────────────────────
+//
+// Two real VRSCTEST sub-identities (foo1, foo — same parent) and the EXACT output
+// bytes the daemon's makeoffer/takeoffer produced when swapping them: the maker
+// offers foo1 wanting foo transferred to RUVyiwmr…, the taker owns foo and receives
+// foo1 transferred to RQgCpj…. Both transferred outputs are byte-locked below; the
+// swap is additionally live-proven end-to-end on VRSCTEST.
+const FOO1_JSON = {
+  version: 3,
+  flags: 0,
+  primaryaddresses: ['RNsCdMnAFWVmtbhvVGfzyeUcEQ3o1h5hZh'],
+  minimumsignatures: 1,
+  name: 'foo1',
+  identityaddress: 'i4Es1vPm74ziMLUKv1cRCwnw1baGYTMtUs',
+  parent: 'i4KtZ8jeMipNJfAdmfxkzQZKmaGpjvhYKe',
+  systemid: 'iJhCezBExJHvtyH3fGhNnt2NhU4Ztkf2yq',
+  contentmap: {},
+  contentmultimap: {},
+  revocationauthority: 'i4Es1vPm74ziMLUKv1cRCwnw1baGYTMtUs',
+  recoveryauthority: 'i4Es1vPm74ziMLUKv1cRCwnw1baGYTMtUs',
+  timelock: 0,
+};
+const FOO_JSON = {
+  version: 3,
+  flags: 0,
+  primaryaddresses: ['RNsCdMnAFWVmtbhvVGfzyeUcEQ3o1h5hZh'],
+  minimumsignatures: 1,
+  name: 'foo',
+  identityaddress: 'iFiHkCvSR8BquhCZyqK7i1Vqkv5hRoVMzd',
+  parent: 'i4KtZ8jeMipNJfAdmfxkzQZKmaGpjvhYKe',
+  systemid: 'iJhCezBExJHvtyH3fGhNnt2NhU4Ztkf2yq',
+  contentmap: {},
+  contentmultimap: {},
+  revocationauthority: 'iFiHkCvSR8BquhCZyqK7i1Vqkv5hRoVMzd',
+  recoveryauthority: 'iFiHkCvSR8BquhCZyqK7i1Vqkv5hRoVMzd',
+  timelock: 0,
+};
+// The two identities' current on-chain primary outputs (foo1 5c347643:0, foo eb99aea8:0).
+const FOO1_OUTPUT =
+  '47040300010315040862a65aecb0c7b7de0b3d796956cae3223af49015040862a65aecb0c7b7de0b3d796956cae3223af49015040862a65aecb0c7b7de0b3d796956cae3223af490cc4cd304030e010115040862a65aecb0c7b7de0b3d796956cae3223af4904c7e0300000000000000011495083c76b8be40dca6e3c8321c387f73093132d5010000000956037c7df826ac1a77e91a0d56c16ed912f63104666f6f3100000862a65aecb0c7b7de0b3d796956cae3223af4900862a65aecb0c7b7de0b3d796956cae3223af49000a6ef9ea235635e328124ff3429db9f9e91b64e2d000000001b04030f010115040862a65aecb0c7b7de0b3d796956cae3223af4901b040310010115040862a65aecb0c7b7de0b3d796956cae3223af49075';
+const FOO_OUTPUT =
+  '4704030001031504863be83d6d820e2062222795bfc33421e84e21941504863be83d6d820e2062222795bfc33421e84e21941504863be83d6d820e2062222795bfc33421e84e2194cc4cd204030e01011504863be83d6d820e2062222795bfc33421e84e21944c7d0300000000000000011495083c76b8be40dca6e3c8321c387f73093132d5010000000956037c7df826ac1a77e91a0d56c16ed912f63103666f6f0000863be83d6d820e2062222795bfc33421e84e2194863be83d6d820e2062222795bfc33421e84e219400a6ef9ea235635e328124ff3429db9f9e91b64e2d000000001b04030f01011504863be83d6d820e2062222795bfc33421e84e21941b04031001011504863be83d6d820e2062222795bfc33421e84e219475';
+const MAKER_NEW = 'RUVyiwmr9yWAvBSSGebEUWCbRm7KS3hg1o';
+const TAKER_NEW = 'RQgCpj8aye69e6RRA7kDdtnxJfjsssJowg';
+// Exact daemon swap outputs: foo→makerNew (maker acquires), foo1→takerNew (taker acquires).
+const DAEMON_SWAP_OUT0_FOO_TO_MAKER =
+  '4704030001031504863be83d6d820e2062222795bfc33421e84e21941504863be83d6d820e2062222795bfc33421e84e21941504863be83d6d820e2062222795bfc33421e84e2194cc4cd204030e01011504863be83d6d820e2062222795bfc33421e84e21944c7d03000000000000000114d2d57bf6dd5862c0712a07d323a326969e24d65d010000000956037c7df826ac1a77e91a0d56c16ed912f63103666f6f0000863be83d6d820e2062222795bfc33421e84e2194863be83d6d820e2062222795bfc33421e84e219400a6ef9ea235635e328124ff3429db9f9e91b64e2d000000001b04030f01011504863be83d6d820e2062222795bfc33421e84e21941b04031001011504863be83d6d820e2062222795bfc33421e84e219475';
+const DAEMON_SWAP_OUT1_FOO1_TO_TAKER =
+  '47040300010315040862a65aecb0c7b7de0b3d796956cae3223af49015040862a65aecb0c7b7de0b3d796956cae3223af49015040862a65aecb0c7b7de0b3d796956cae3223af490cc4cd304030e010115040862a65aecb0c7b7de0b3d796956cae3223af4904c7e03000000000000000114a8e41366e89ee9ce3876a28d116273b3dc320c6d010000000956037c7df826ac1a77e91a0d56c16ed912f63104666f6f3100000862a65aecb0c7b7de0b3d796956cae3223af4900862a65aecb0c7b7de0b3d796956cae3223af49000a6ef9ea235635e328124ff3429db9f9e91b64e2d000000001b04030f010115040862a65aecb0c7b7de0b3d796956cae3223af4901b040310010115040862a65aecb0c7b7de0b3d796956cae3223af49075';
+
+describe('buildSwapIdentityOffer', () => {
+  it('spends the offered identity output (0x83) into the wanted identity transferred to the maker', () => {
+    const offer = buildSwapIdentityOffer(
+      {
+        wif: TEST_WIF,
+        offeredIdentityOutput: { txid: 'ab'.repeat(32), vout: 0, script: FOO1_OUTPUT },
+        wantedIdentityJson: FOO_JSON,
+        makerPrimaryAddresses: [MAKER_NEW],
+        expiryHeight: 1_200_000,
+      },
+      NETWORK,
+    );
+    const net = getNetwork(true);
+    const tx = Transaction.fromHex(offer.offerTx, net);
+    expect(tx.ins.length).toBe(1);
+    expect(tx.outs.length).toBe(1);
+    // out[0] = the wanted identity (foo) transferred to the maker, byte-identical to the daemon.
+    expect(tx.outs[0]!.script.toString('hex')).toBe(DAEMON_SWAP_OUT0_FOO_TO_MAKER);
+    expect(tx.outs[0]!.value).toBe(0);
+    const ff = (bscript.decompile(tx.ins[0]!.script) ?? []).find((c): c is Buffer => Buffer.isBuffer(c));
+    expect(ff!.subarray(0, 2).toString('hex')).toBe('0183');
+  });
+
+  it('rejects a 0 / never-expiring offer', () => {
+    expect(() =>
+      buildSwapIdentityOffer(
+        {
+          wif: TEST_WIF,
+          offeredIdentityOutput: { txid: 'ab'.repeat(32), vout: 0, script: FOO1_OUTPUT },
+          wantedIdentityJson: FOO_JSON,
+          makerPrimaryAddresses: [MAKER_NEW],
+          expiryHeight: 0,
+        },
+        NETWORK,
+      ),
+    ).toThrow(/expiryHeight .* is required/);
+  });
+});
+
+describe('completeSwapIdentityOffer', () => {
+  function makeSwapOffer() {
+    return buildSwapIdentityOffer(
+      {
+        wif: TEST_WIF,
+        offeredIdentityOutput: { txid: 'ab'.repeat(32), vout: 0, script: FOO1_OUTPUT },
+        wantedIdentityJson: FOO_JSON,
+        makerPrimaryAddresses: [MAKER_NEW],
+        expiryHeight: 1_200_000,
+      },
+      NETWORK,
+    ).offerTx;
+  }
+
+  it('appends the offered identity to the taker, spends the wanted identity, funds only the fee', () => {
+    const net = getNetwork(true);
+    const swap = completeSwapIdentityOffer(
+      {
+        offerTx: makeSwapOffer(),
+        offeredIdentityJson: FOO1_JSON,
+        takerPrimaryAddresses: [TAKER_NEW],
+        wantedIdentityOutput: { txid: 'cd'.repeat(32), vout: 0, script: FOO_OUTPUT },
+        takerUtxos: [makeFundingUtxo('bb', 100_000_000n)], // native for the fee only
+        changeAddress: TEST_ADDRESS,
+        wif: TEST_WIF,
+      },
+      NETWORK,
+    );
+    const tx = Transaction.fromHex(swap.swapTx, net);
+    // out[0] = wanted identity (foo) to maker, kept from the offer partial.
+    expect(tx.outs[0]!.script.toString('hex')).toBe(DAEMON_SWAP_OUT0_FOO_TO_MAKER);
+    expect(tx.outs[0]!.value).toBe(0);
+    // out[1] = offered identity (foo1) transferred to the taker, byte-identical to the daemon.
+    expect(tx.outs[1]!.script.toString('hex')).toBe(DAEMON_SWAP_OUT1_FOO1_TO_TAKER);
+    expect(tx.outs[1]!.value).toBe(0);
+    // out[2] = native change (no currency moves).
+    expect(tx.outs.length).toBe(3);
+    expect(tx.outs[2]!.value).toBeGreaterThan(0);
+    // in[0] = maker offered-identity input (0x83), preserved.
+    const in0f = (bscript.decompile(tx.ins[0]!.script) ?? []).find((c): c is Buffer => Buffer.isBuffer(c));
+    expect(in0f!.subarray(0, 2).toString('hex')).toBe('0183');
+    // in[1] = taker's wanted-identity input (CC), in[2] = native fee — both signed.
+    expect(tx.ins.length).toBe(3);
+    expect(tx.ins[1]!.script.length).toBeGreaterThan(0);
+    expect(tx.ins[2]!.script.length).toBeGreaterThan(0);
+    // in[1]'s CC fulfillment carries SIGHASH_ALL (0x01), not the maker's 0x83.
+    const in1f = (bscript.decompile(tx.ins[1]!.script) ?? []).find((c): c is Buffer => Buffer.isBuffer(c));
+    expect(in1f!.subarray(0, 2).toString('hex')).toBe('0101');
+  });
+
+  it('rejects empty takerPrimaryAddresses', () => {
+    expect(() =>
+      completeSwapIdentityOffer(
+        {
+          offerTx: makeSwapOffer(),
+          offeredIdentityJson: FOO1_JSON,
+          takerPrimaryAddresses: [],
+          wantedIdentityOutput: { txid: 'cd'.repeat(32), vout: 0, script: FOO_OUTPUT },
+          takerUtxos: [makeFundingUtxo('bb', 100_000_000n)],
+          changeAddress: TEST_ADDRESS,
+          wif: TEST_WIF,
+        },
+        NETWORK,
+      ),
+    ).toThrow(/takerPrimaryAddresses must not be empty/);
   });
 });

@@ -13,7 +13,7 @@
  * `takeoffer`: `Identity.fromJson(getidentity)` with `setPrimaryAddresses`, then
  * `buildIdentityScript` (verified on VRSCTEST).
  *
- * Both directions are covered and live-proven on VRSCTEST:
+ * All three flows are covered and live-proven on VRSCTEST:
  *   - SELL (offer the identity, want a currency): the maker spends the identity's
  *     current primary output with 0x83; the taker appends the transferred identity
  *     and pays. No funding tx.
@@ -21,6 +21,10 @@
  *     commitment and offers it, wanting the identity transferred to the buyer; the
  *     taker (the identity's owner) spends the identity's current output and takes
  *     the currency.
+ *   - SWAP (offer an identity, want an identity): the maker spends the offered
+ *     identity's output with 0x83, wanting the other identity transferred to them;
+ *     the taker (who owns the wanted identity) spends its output and receives the
+ *     offered identity. No currency moves — the taker funds only the miner fee.
  */
 import { Transaction, TransactionBuilder, Identity, type VerusCLIVerusIDJson } from '../fork/boundary.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
@@ -329,6 +333,131 @@ export function completeBuyIdentityOffer(
   // when offering native, else 0) + the seller's native inputs = outputs + fee.
   const sellerNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
   assertNativeConservation([{ satoshis: commitmentNative + sellerNativeIn }], tx.outs, selection.fee, 'takeBuyIdentityOffer');
+
+  const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
+  return { swapTx: signedTx, txid };
+}
+
+// ─── Swapping an identity for an identity (identity ↔ identity) ───────
+
+export interface BuildSwapIdentityOfferParams {
+  wif: string;
+  /**
+   * The OFFERED identity's current on-chain primary output, read from the chain:
+   * `txid`/`vout` locate it, `script` is its scriptPubKey hex. The `wif` must
+   * control one of the offered identity's primary addresses.
+   */
+  offeredIdentityOutput: { txid: string; vout: number; script: string };
+  /** The WANTED identity, as returned by the daemon's `getidentity` (its `.identity`). */
+  wantedIdentityJson: VerusCLIVerusIDJson;
+  /** The maker's new primary (control) addresses for the wanted identity. */
+  makerPrimaryAddresses: string[];
+  /** A real future block height; the daemon rejects a 0/never-expiring offer. */
+  expiryHeight: number;
+}
+
+/**
+ * Build the maker's half of an identity-for-identity swap: spend the OFFERED
+ * identity's current primary output with 0x83 into the single WANTED output — the
+ * WANTED identity transferred to the maker's control. This is exactly a
+ * buy-identity offer whose currency commitment is replaced by the offered
+ * identity's output (which carries 0 native): input 0 gives up the offered
+ * identity, output 0 acquires the wanted one.
+ */
+export function buildSwapIdentityOffer(
+  params: BuildSwapIdentityOfferParams,
+  network: Network,
+): BuildOfferResult {
+  return buildBuyIdentityOffer(
+    {
+      wif: params.wif,
+      commitment: {
+        txid: params.offeredIdentityOutput.txid,
+        vout: params.offeredIdentityOutput.vout,
+        value: 0n, // an identity primary output carries 0 native
+        script: params.offeredIdentityOutput.script,
+      },
+      identityJson: params.wantedIdentityJson,
+      buyerPrimaryAddresses: params.makerPrimaryAddresses,
+      expiryHeight: params.expiryHeight,
+    },
+    network,
+  );
+}
+
+export interface CompleteSwapIdentityOfferParams {
+  /** The maker's half-signed identity swap offer (from buildSwapIdentityOffer). */
+  offerTx: string;
+  /** The OFFERED identity, as returned by `getidentity` (its `.identity`) — transferred to the taker. */
+  offeredIdentityJson: VerusCLIVerusIDJson;
+  /** The taker's new primary (control) addresses for the acquired (offered) identity. */
+  takerPrimaryAddresses: string[];
+  /** The WANTED identity's current output (read from chain): txid/vout/script hex. The taker owns & spends it. */
+  wantedIdentityOutput: { txid: string; vout: number; script: string };
+  /** The taker's native UTXOs to cover the miner fee (both identity inputs carry none). */
+  takerUtxos: Utxo[];
+  changeAddress: string;
+  wif: string;
+}
+
+export interface CompleteSwapIdentityOfferResult {
+  swapTx: string;
+  txid: string;
+}
+
+/**
+ * Complete an identity-for-identity swap: give up the WANTED identity (spend its
+ * current output, transferring it to the maker via output 0), receive the OFFERED
+ * identity (transferred to `takerPrimaryAddresses`), and sign the taker's side.
+ * No currency moves — the taker funds only the miner fee.
+ */
+export function completeSwapIdentityOffer(
+  params: CompleteSwapIdentityOfferParams,
+  network: Network,
+): CompleteSwapIdentityOfferResult {
+  const verusNetwork = getNetwork(network === 'testnet');
+  const systemId = NETWORK_CONFIG[network].chainId;
+
+  if (params.takerPrimaryAddresses.length === 0) {
+    throw new TransactionBuildError('completeSwapIdentityOffer: takerPrimaryAddresses must not be empty');
+  }
+
+  const tx = Transaction.fromHex(params.offerTx, verusNetwork);
+  if (tx.ins.length !== 1 || tx.outs.length !== 1) {
+    throw new TransactionBuildError('completeSwapIdentityOffer: expected a maker offer partial (1 input, 1 output)');
+  }
+
+  // Output 1: the OFFERED identity transferred to the taker.
+  tx.addOutput(buildTransferredIdentity(params.offeredIdentityJson, params.takerPrimaryAddresses), 0);
+
+  // Input 1: the taker's WANTED identity output (spent, transferring it to the maker).
+  const idIdx = tx.addInput(
+    Buffer.from(params.wantedIdentityOutput.txid, 'hex').reverse(),
+    params.wantedIdentityOutput.vout,
+    0xffffffff,
+  );
+  const takerInputs: TakerInput[] = [
+    { index: idIdx, prevOutScript: Buffer.from(params.wantedIdentityOutput.script, 'hex'), value: 0n },
+  ];
+
+  // The taker funds only the miner fee (native), from their own UTXOs. Two identity
+  // outputs + the maker input are already present but invisible to selectUtxos, so
+  // a generous byte allowance covers their fee contribution.
+  const selection = selectUtxos(params.takerUtxos, 0n, new Map(), 3, systemId, undefined, true, 500);
+  for (const u of selection.selected) {
+    const idx = tx.addInput(Buffer.from(u.txid, 'hex').reverse(), u.outputIndex, 0xffffffff);
+    takerInputs.push({ index: idx, prevOutScript: Buffer.from(u.script, 'hex'), value: u.satoshis });
+  }
+
+  // Output 2: the taker's native change, if any.
+  if (selection.nativeChange > 0n) {
+    tx.addOutput(nativePaymentScript(params.changeAddress), toSafeNumber(selection.nativeChange));
+  }
+
+  // Native conservation: both identity inputs carry 0 native, so the taker's native
+  // inputs must equal the change + fee.
+  const takerNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
+  assertNativeConservation([{ satoshis: takerNativeIn }], tx.outs, selection.fee, 'takeSwapIdentityOffer');
 
   const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
   return { swapTx: signedTx, txid };
