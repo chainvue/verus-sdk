@@ -410,11 +410,50 @@ describe('input-validation hardening', () => {
   });
 
   it('rejects a non-integer start block', () => {
-    expect(() => serializeCurrencyDefinition({ ...base, startBlock: 1.5 })).toThrow(/non-negative integer block height/);
-    expect(() => serializeCurrencyDefinition({ ...base, startBlock: -1 })).toThrow(/non-negative integer block height/);
+    expect(() => serializeCurrencyDefinition({ ...base, startBlock: 1.5 })).toThrow(/integer block height/);
+    expect(() => serializeCurrencyDefinition({ ...base, startBlock: -1 })).toThrow(/integer block height/);
   });
 
   it('rejects a fee field beyond int64', () => {
     expect(() => serializeCurrencyDefinition({ ...base, idRegistrationFees: 2n ** 63n })).toThrow(/idRegistrationFees must be in/);
+  });
+
+  it('requires the native currency among a fractional basket reserves', () => {
+    expect(() =>
+      serializeCurrencyDefinition({
+        ...base,
+        options: CURRENCY_OPTION.TOKEN | CURRENCY_OPTION.FRACTIONAL,
+        currencies: [SECOND, THIRD], // no VRSCTEST (the native)
+        weights: [50_000_000n, 50_000_000n],
+        initialSupply: 1_000_000_000_000n,
+      }),
+    ).toThrow(/must include the chain's native currency/);
+  });
+
+  it('rejects a reserve weight below 5% after normalization', () => {
+    expect(() =>
+      serializeCurrencyDefinition(frac({ currencies: [VRSCTEST, SECOND], weights: [1n, 99n] })), // → [1%, 99%]
+    ).toThrow(/below the 5% minimum/);
+  });
+
+  it('rejects more than 10 reserve currencies', () => {
+    const many = [VRSCTEST, ...new Array<string>(10).fill(SECOND)];
+    expect(() =>
+      serializeCurrencyDefinition(frac({ currencies: many, weights: new Array<bigint>(11).fill(10_000_000n) })),
+    ).toThrow(/at most 10 reserve currencies/);
+  });
+
+  it('rejects more than 5 referral levels', () => {
+    expect(() => serializeCurrencyDefinition({ ...base, idReferralLevels: 6 })).toThrow(/idReferralLevels must be ≤ 5/);
+  });
+
+  it('rejects an end block too close to the start block', () => {
+    expect(() => serializeCurrencyDefinition({ ...base, startBlock: 1000, endBlock: 1400 })).toThrow(/must be 0 or ≥ startBlock \+ 480/);
+    // exactly startBlock + 480 is allowed
+    expect(() => serializeCurrencyDefinition({ ...base, startBlock: 1000, endBlock: 1480 })).not.toThrow();
+  });
+
+  it('rejects a start block beyond int32', () => {
+    expect(() => serializeCurrencyDefinition({ ...base, startBlock: 0x80000000 })).toThrow(/block height in/);
   });
 });

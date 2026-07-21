@@ -20,7 +20,7 @@
  */
 import { Identity } from '../fork/boundary.js';
 import type { Network } from '../constants/index.js';
-import { DEFAULT_EXPIRY_DELTA } from '../constants/index.js';
+import { DEFAULT_EXPIRY_DELTA, NETWORK_CONFIG } from '../constants/index.js';
 import type { Utxo } from '../types/index.js';
 import { getNetwork } from '../signing/index.js';
 import { assertWifIsPrimary } from '../identity/index.js';
@@ -84,6 +84,13 @@ export function buildCurrencyLaunchTransaction(
   const identityAddress = params.identity.identityaddress;
   if (typeof identityAddress !== 'string' || !identityAddress) {
     throw new TransactionBuildError('identity.identityaddress is required');
+  }
+  // The currency's system must be this chain (the daemon forces it). Catch a wrong
+  // systemId/parent here, where the network — hence the chain id — is known.
+  const chainId = NETWORK_CONFIG[network].chainId;
+  const systemId = params.definition.systemId ?? params.definition.parent;
+  if (systemId !== chainId) {
+    throw new TransactionBuildError(`currency systemId/parent (${systemId}) must be the chain id (${chainId}) — this SDK launches same-chain currencies only`);
   }
 
   // Fail closed if the WIF does not control the identity: the fork would sign the

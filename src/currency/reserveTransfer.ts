@@ -26,6 +26,9 @@ const EVAL_RESERVE_TRANSFER = 8;
 // destination (chain-independent, `src/cc/CCcustom.cpp`).
 const RESERVE_TRANSFER_KEYHASH = Buffer.from('cb8a0f7f651b484a81e2312c3438deb601e27368', 'hex');
 
+// The daemon's minimum reserve-transfer fee (0.0002 native; GetTransactionTransferFee).
+const MIN_TRANSFER_FEE = 20_000n;
+
 // ReserveTransfer flag bits.
 const RT_VALID = 1;
 const RT_CONVERT = 2;
@@ -76,8 +79,12 @@ export function buildReserveTransferOutput(params: ReserveTransferParams): Reser
   if (params.amount <= 0n) {
     throw new TransactionBuildError('amount must be positive');
   }
-  if (params.feeAmount < 0n) {
-    throw new TransactionBuildError('feeAmount must be non-negative');
+  // The daemon's minimum transfer fee (GetTransactionTransferFee, pbaas.cpp): a
+  // reserve transfer paying less is rejected. The exact fee for a given amount is
+  // computed by the node — query it (e.g. `sendcurrency … returntxtemplate`) and
+  // pass it here; this only guards the floor.
+  if (params.feeAmount < MIN_TRANSFER_FEE) {
+    throw new TransactionBuildError(`feeAmount must be at least ${MIN_TRANSFER_FEE} (the daemon's minimum transfer fee), got ${params.feeAmount}`);
   }
   // Every address MUST be a currency/identity i-address. The transfer destination
   // is encoded as DEST_ID, so an R-address recipient would silently become an

@@ -100,4 +100,9 @@ describe('buildReserveTransferOutput — byte-locked against live sendcurrency',
   it('rejects a fee currency that differs from the source (native scope)', () => {
     expect(() => buildReserveTransferOutput({ ...ok, feeCurrency: BANKROLL })).toThrow(/feeCurrency must equal sourceCurrency/);
   });
+
+  it('rejects a fee below the daemon minimum', () => {
+    expect(() => buildReserveTransferOutput({ ...ok, feeAmount: 19_999n })).toThrow(/at least 20000/);
+    expect(buildReserveTransferOutput({ ...ok, feeAmount: 20_000n }).value).toBe(ok.amount + 20_000n);
+  });
 });

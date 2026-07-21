@@ -109,6 +109,12 @@ export interface CurrencyLaunchOutputs {
 /** Output 0: re-issue the defining identity with FLAG_ACTIVECURRENCY (+ TOKENIZED_ID_CONTROL for NFTs). */
 function buildIdentityUpdateOutput(identityJson: Record<string, unknown>, options: number): CurrencyLaunchOutput {
   const identity = Identity.fromJson(identityJson);
+  // An identity may define a currency only once (pbaas.cpp:4533 "Identity already
+  // has used its one-time ability to define a currency"). If FLAG_ACTIVECURRENCY
+  // is already set, the launch is doomed — fail closed instead of signing it.
+  if (identity.flags.and(new BN(IDENTITY_FLAG_ACTIVECURRENCY)).gtn(0)) {
+    throw new TransactionBuildError('identity already has an active currency (FLAG_ACTIVECURRENCY set); a currency can be defined only once per identity');
+  }
   identity.flags = identity.flags.or(new BN(IDENTITY_FLAG_ACTIVECURRENCY));
   if (options & CURRENCY_OPTION.NFT_TOKEN) {
     identity.flags = identity.flags.or(new BN(IDENTITY_FLAG_TOKENIZED_ID_CONTROL));
@@ -302,6 +308,19 @@ export function buildCurrencyLaunchOutputs(
   if (!Number.isInteger(context.height) || context.height < 0) {
     throw new TransactionBuildError(`context.height must be a non-negative block height, got ${context.height}`);
   }
+  // A launch's start block must be in the future: the daemon clamps startBlock to
+  // above the tip (pbaasrpc.cpp:13491) and never emits a past/zero one, so a
+  // startBlock ≤ tip would clear the launch immediately (a state no daemon-built
+  // definition produces — instant launch-failure/refund for a preconvert basket).
+  if (def.startBlock <= context.height) {
+    throw new TransactionBuildError(`startBlock (${def.startBlock}) must be greater than the current height (${context.height})`);
+  }
+  // The currency's system must be this chain (pbaasrpc.cpp:13450 forces
+  // systemID = chain id for every same-chain token). The defining identity's
+  // `systemid` is that chain, so mismatch here means a wrong systemId/parent.
+  if (typeof context.identity.systemid === 'string' && def.systemId !== context.identity.systemid) {
+    throw new TransactionBuildError(`currency systemId (${def.systemId}) must equal the chain system id (${String(context.identity.systemid)})`);
+  }
   if (context.launchFeeSats <= 0n) {
     throw new TransactionBuildError('context.launchFeeSats must be positive');
   }
@@ -314,7 +333,9 @@ export function buildCurrencyLaunchOutputs(
   // Half the launch fee funds the reserve deposit; the export/import threads
   // carry the same amount as their fee. The token supply in the state is the sum
   // of pre-allocations (fractional currencies wait for preconversions).
-  const importFee = context.launchFeeSats / 2n;
+  // LaunchFeeImportShare = fee - (fee >> 1): the ceiling half for odd fees, so the
+  // reserve deposit matches consensus byte-for-byte (crosschainrpc.h:1039-1047).
+  const importFee = context.launchFeeSats - context.launchFeeSats / 2n;
   const tokenSupply = def.preAllocations.reduce((sum, p) => sum + p.amount, 0n);
   const feeEntry = [{ hash: systemHash, amount: importFee }];
 

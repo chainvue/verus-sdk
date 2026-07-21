@@ -178,6 +178,13 @@ const DEFAULT_ID_REGISTRATION_FEE = 10_000_000_000n; // 100 native
 const DEFAULT_ID_IMPORT_FEE = 2_000_000n; // 0.02 native
 const DEFAULT_ID_REFERRAL_LEVELS = 3;
 
+// Consensus limits the daemon enforces (VerusCoin v1.2.17-1).
+const MIN_RESERVE_RATIO = 5_000_000n; // 5% of SATOSHIDEN — the per-reserve weight floor (crosschainrpc.h MIN_RESERVE_RATIO)
+const MAX_RESERVE_CURRENCIES = 10; // pbaasrpc.cpp:13613
+const MAX_ID_REFERRAL_LEVELS = 5; // crosschainrpc.h MAX_ID_REFERRAL_LEVELS
+const MIN_CURRENCY_LIFE = 480; // endBlock must be ≥ startBlock + this (pbaasrpc.cpp:13497)
+const BLOCK_MAX = 0x7fffffff; // startBlock/endBlock are int32 on the wire
+
 /**
  * Apply daemon-like defaults, enforce the token/basket scope, and normalize
  * reserve weights. Exposed so the currency-launch output builders derive the
@@ -297,6 +304,7 @@ export function normalizeCurrencyDefinition(input: CurrencyDefinitionInput): Nor
   if (!isFractional && currencies.length > 0) {
     throw new TransactionBuildError('reserve currencies require the FRACTIONAL bit (0x01)');
   }
+  let fractionalWeights: bigint[] = [];
   if (isFractional) {
     // The daemon requires one weight per reserve and a positive initial supply.
     // (It even-splits omitted weights, distributing the remainder to the FIRST
@@ -308,6 +316,23 @@ export function normalizeCurrencyDefinition(input: CurrencyDefinitionInput): Nor
     if ((input.initialSupply ?? 0n) <= 0n) {
       throw new TransactionBuildError('a fractional currency requires a positive initialSupply (the daemon rejects zero)');
     }
+    if (currencies.length > MAX_RESERVE_CURRENCIES) {
+      throw new TransactionBuildError(`a fractional currency may have at most ${MAX_RESERVE_CURRENCIES} reserve currencies, got ${currencies.length}`);
+    }
+    // The chain's native currency must be among the reserves (pbaas.cpp:4103,
+    // pbaasrpc.cpp:13694 "Fractional currency requires a reserve of VRSC…").
+    if (!currencies.includes(systemId)) {
+      throw new TransactionBuildError(`a fractional currency must include the chain's native currency (${systemId}) among its reserves`);
+    }
+    fractionalWeights = normalizeWeights(input.weights);
+    // Every reserve must weigh at least 5% (crosschainrpc.h MIN_RESERVE_RATIO).
+    // NOTE: pre-launch carve-out, discount, and pre-allocation emission dilute
+    // weights further AT LAUNCH — this only checks the definition; keep headroom.
+    fractionalWeights.forEach((w, i) => {
+      if (w < MIN_RESERVE_RATIO) {
+        throw new TransactionBuildError(`reserve weight[${i}] normalizes to ${w}, below the 5% minimum (${MIN_RESERVE_RATIO}); a fractional reserve may not go below 5%`);
+      }
+    });
   } else {
     // A non-fractional token has no reserve pool: the daemon reads initialSupply
     // and preLaunchDiscount only for fractional currencies, so accepting them
@@ -325,12 +350,22 @@ export function normalizeCurrencyDefinition(input: CurrencyDefinitionInput): Nor
   // non-negative integers, carve-out is non-negative, and every pre-allocation is
   // a positive amount. Catch them here rather than serialize an unbroadcastable tx.
   const requireBlock = (v: number, label: string): void => {
-    if (!Number.isInteger(v) || v < 0) {
-      throw new TransactionBuildError(`${label} must be a non-negative integer block height, got ${v}`);
+    if (!Number.isInteger(v) || v < 0 || v > BLOCK_MAX) {
+      throw new TransactionBuildError(`${label} must be an integer block height in [0, ${BLOCK_MAX}], got ${v}`);
     }
   };
-  requireBlock(input.startBlock ?? 0, 'startBlock');
-  requireBlock(input.endBlock ?? 0, 'endBlock');
+  const startBlock = input.startBlock ?? 0;
+  const endBlock = input.endBlock ?? 0;
+  requireBlock(startBlock, 'startBlock');
+  requireBlock(endBlock, 'endBlock');
+  // A currency with an end block must live at least MIN_CURRENCY_LIFE blocks
+  // (pbaasrpc.cpp:13497); endBlock 0 means "no end".
+  if (endBlock !== 0 && endBlock < startBlock + MIN_CURRENCY_LIFE) {
+    throw new TransactionBuildError(`endBlock (${endBlock}) must be 0 or ≥ startBlock + ${MIN_CURRENCY_LIFE} (${startBlock + MIN_CURRENCY_LIFE})`);
+  }
+  if ((input.idReferralLevels ?? DEFAULT_ID_REFERRAL_LEVELS) > MAX_ID_REFERRAL_LEVELS) {
+    throw new TransactionBuildError(`idReferralLevels must be ≤ ${MAX_ID_REFERRAL_LEVELS}`);
+  }
   if ((input.preLaunchCarveOut ?? 0) < 0) {
     throw new TransactionBuildError('preLaunchCarveOut must be non-negative');
   }
@@ -388,8 +423,8 @@ export function normalizeCurrencyDefinition(input: CurrencyDefinitionInput): Nor
     preAllocations: input.preAllocations ?? [],
     gatewayConverterIssuance: 0n,
     currencies,
-    // Weights are normalized to sum to 1e8, exactly as the daemon does.
-    weights: isFractional ? normalizeWeights(input.weights as bigint[]) : [],
+    // Normalized to sum to 1e8 (computed and range-checked above).
+    weights: fractionalWeights,
     // A fractional definition always carries a zero conversion vector (the daemon
     // ignores any explicit `conversions` and derives launch prices); a
     // non-fractional token has no reserves, hence an empty vector.

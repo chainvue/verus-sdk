@@ -118,6 +118,15 @@ describe('buildCurrencyLaunchTransaction — offline assembly + signing', () => 
     expect(() => buildCurrencyLaunchTransaction({ ...baseParams(), fundingUtxos: [] }, NETWORK)).toThrow(TransactionBuildError);
   });
 
+  it('rejects a currency whose parent/systemId is not the chain', () => {
+    // A currency defined under a non-root parent — the daemon forces systemId to
+    // the chain id, so this same-chain-only builder must refuse it.
+    const offChain = { ...DEFINITION, parent: 'iGfe9Pur1yEwWYE52hpb533YBpQpU4uvzt' };
+    expect(() => buildCurrencyLaunchTransaction({ ...baseParams(), definition: offChain }, NETWORK)).toThrow(
+      /must be the chain id/,
+    );
+  });
+
   it('throws on insufficient funds (cannot cover the reserve deposit)', () => {
     expect(() =>
       buildCurrencyLaunchTransaction({ ...baseParams(), fundingUtxos: [makeFundingUtxo('aa', 1_000n)] }, NETWORK),

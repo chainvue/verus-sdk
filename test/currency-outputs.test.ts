@@ -142,6 +142,32 @@ describe('buildCurrencyLaunchOutputs — byte-locked against live definecurrency
     ).toThrow(/identity mismatch/);
   });
 
+  it('rejects a start block at or below the current height', () => {
+    // startBlock 1_155_538 with height 1_155_538 (not in the future).
+    expect(() =>
+      buildCurrencyLaunchOutputs(TOKEN_INPUT, { identity: KMERG_IDENTITY, height: 1_155_538, launchFeeSats: LAUNCH_FEE_SATS }),
+    ).toThrow(/must be greater than the current height/);
+  });
+
+  it('rejects an identity that already has an active currency', () => {
+    const used = { ...KMERG_IDENTITY, flags: 1 }; // FLAG_ACTIVECURRENCY already set
+    expect(() =>
+      buildCurrencyLaunchOutputs(TOKEN_INPUT, { identity: used, height: TOKEN_HEIGHT, launchFeeSats: LAUNCH_FEE_SATS }),
+    ).toThrow(/already has an active currency/);
+  });
+
+  it('rejects a systemId that is not the chain', () => {
+    const otherSystem = { ...KMERG_IDENTITY, systemid: 'iGfe9Pur1yEwWYE52hpb533YBpQpU4uvzt' };
+    expect(() =>
+      buildCurrencyLaunchOutputs(TOKEN_INPUT, { identity: otherSystem, height: TOKEN_HEIGHT, launchFeeSats: LAUNCH_FEE_SATS }),
+    ).toThrow(/must equal the chain system id/);
+  });
+
+  it('rounds the reserve deposit up for an odd launch fee (import share = ceil)', () => {
+    const outs = buildCurrencyLaunchOutputs(TOKEN_INPUT, { identity: KMERG_IDENTITY, height: TOKEN_HEIGHT, launchFeeSats: 3n });
+    expect(outs.reserveDeposit.value).toBe(2n); // 3 - (3 >> 1) = 2, not 1
+  });
+
   // An NFT (tokenized ID control) launch, byte-locked against the live-accepted
   // daemon tx (kmerg NFT, def tx 8d8671d4…) at height 1156133. Exercises the NFT
   // path: identity output with TOKENIZED_ID_CONTROL, the native-currency-mapped
