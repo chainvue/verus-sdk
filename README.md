@@ -41,6 +41,11 @@ const { signedTx, txid, fee } = sdk.transfer({
   VerusID sell / buy / swap (`build*IdentityOffer` / `complete*IdentityOffer`).
   Native coin, tokens, and identities, in every combination — plus
   `buildReclaimOffer` to cancel an unaccepted offer and reclaim the funds.
+- **Currency definitions** — `buildCurrencyDefinitionScript` serializes a token
+  or fractional-basket definition to its EVAL_CURRENCY_DEFINITION output script
+  offline, byte-equivalent to the daemon. It is a serialization primitive, not a
+  launcher: a full on-chain launch also needs live-state notarization outputs and
+  is a daemon (`definecurrency`) operation.
 - **Helpers** — `VerusSDK.generateWif()`, `deriveAddress(wif)`,
   `deriveIdentityAddress(name, parent?)`, `validateAddress`, `validateWif`;
   `utils.summarizeSignedTransaction(hex)` decodes a signed tx (txid, spent
@@ -72,6 +77,7 @@ Per-area guides, plus runnable offline examples in [`examples/`](./examples):
 | [transfers](./docs/transfers.md) | `transfer` / `transferToken` / `convert` / `sendCurrency`, UTXOs, change, re-validation |
 | [VerusID lifecycle](./docs/identity.md) | commit → register, update, lock/unlock, revoke/recover, sign/verify messages |
 | [marketplace offers](./docs/offers.md) | atomic-swap model, the maker/taker halves, currency↔currency and VerusID sell/buy/swap |
+| [currency definitions](./docs/currency.md) | the offline definition serializer (token / fractional basket), scope, and why a full launch is a daemon operation |
 | [signing & wire format](./docs/signing-and-wire.md) | why the bytes are the daemon's, the self-contained bundle, the proof rings |
 | [architecture](./docs/architecture.md) | the fork boundary, the two assemblers, what's unrepresentable vs checked, the differential harness |
 | [testing](./docs/testing.md) | the gate, the plain-`node` rule, the live-proof ring model |

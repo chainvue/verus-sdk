@@ -215,5 +215,20 @@ describe('VerusSDK integration', () => {
       expect((mod.offers as Record<string, unknown>)['signOfferInput']).toBeUndefined();
       expect((mod.offers as Record<string, unknown>)['signTakerInputs']).toBeUndefined();
     });
+
+    it('should expose the currency-definition serializer via namespace, facade, and top level', async () => {
+      const mod = await import('../src/index.js');
+      const sdk = new mod.VerusSDK({ network: 'testnet' });
+      expect(typeof mod.buildCurrencyDefinitionScript).toBe('function');
+      expect(typeof mod.serializeCurrencyDefinition).toBe('function');
+      expect(typeof mod.currency.buildCurrencyDefinitionScript).toBe('function');
+      expect(typeof sdk.buildCurrencyDefinitionScript).toBe('function');
+      expect(mod.CURRENCY_OPTION.TOKEN).toBe(0x20);
+      expect(mod.CURRENCY_OPTION.FRACTIONAL).toBe(0x1);
+      // Full offline launch-output builder, exposed at top level, namespace, and facade.
+      expect(typeof mod.buildCurrencyLaunchOutputs).toBe('function');
+      expect(typeof mod.currency.buildCurrencyLaunchOutputs).toBe('function');
+      expect(typeof sdk.buildCurrencyLaunchOutputs).toBe('function');
+    });
   });
 });
