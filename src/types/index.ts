@@ -112,6 +112,18 @@ export interface CurrencyOutput {
   feeSatoshis?: bigint;
   /** Pre-conversion flag */
   preconvert?: boolean;
+  /**
+   * Mint new supply of a centralized currency. Only valid when the transaction is
+   * funded from — and signed for — the currency's own controlling identity (the
+   * `currency` here must be a same-chain `proofProtocol: 2` token whose id equals
+   * the source): the daemon rejects a mint that isn't authorized by the currency
+   * id. Cannot be combined with a conversion.
+   */
+  mintnew?: boolean;
+  /** Burn currency (reduce supply / change price). Burns the sender's own holdings. */
+  burn?: boolean;
+  /** Burn to change a fractional currency's reserve weight (advanced). */
+  burnweight?: boolean;
 }
 
 /** Full send_currency parameters */
