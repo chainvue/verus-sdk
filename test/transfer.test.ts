@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Transaction, networks } from '@bitgo/utxo-lib';
+import { Transaction, networks, script as bscript, opcodes } from '@bitgo/utxo-lib';
+import { OptCCParams, ReserveTransfer } from 'verus-typescript-primitives';
 import { buildAndSign, transfer, transferToken, sendCurrency } from '../src/transfer/index.js';
 import { assertNativeConservation } from '../src/signing/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
@@ -287,6 +288,90 @@ describe('transfer', () => {
       const outSum = tx.outs.reduce((s: bigint, o: { value: number }) => s + BigInt(o.value), 0n);
       // Single 100M input; the built tx must burn exactly the reported fee.
       expect(100_000_000n - outSum).toBe(result.fee);
+    });
+  });
+
+  // Mint of a centralized currency. Verified live on VRSCTEST (tx 6acfe792…):
+  // a mint is a reserve transfer with the MINT_CURRENCY flag, sourced from the
+  // currency's own controlling identity, and creates supply without a token input.
+  describe('sendCurrency mint / burn', () => {
+    const nativeUtxo = {
+      txid: 'a'.repeat(64),
+      outputIndex: 0,
+      satoshis: 100_000_000n,
+      script: makeP2PKHScript(TEST_ADDR),
+    };
+
+    // Pull the ReserveTransfer out of the tx's CryptoCondition output.
+    function reserveTransferOf(signedTx: string): ReserveTransfer {
+      const tx = Transaction.fromHex(signedTx, networks.verustest);
+      const cc = tx.outs.find((o: { script: Buffer }) => {
+        const chunks = bscript.decompile(o.script);
+        return !!chunks && chunks.length === 4 && chunks[1] === opcodes.OP_CHECKCRYPTOCONDITION;
+      });
+      if (!cc) throw new Error('no CC output found');
+      const chunks = bscript.decompile(cc.script) as (Buffer | number)[];
+      const paramsChunk = chunks[2];
+      if (!Buffer.isBuffer(paramsChunk)) throw new Error('malformed CC output');
+      const params = OptCCParams.fromChunk(paramsChunk);
+      const vdata = params.vdata[0];
+      if (!Buffer.isBuffer(vdata)) throw new Error('CC output has no vdata');
+      const rt = new ReserveTransfer();
+      rt.fromBuffer(vdata);
+      return rt;
+    }
+
+    it('mints new supply from native funding alone (no token input required)', () => {
+      // The minted currency is CREATED, not spent, so the build must not demand a
+      // token input — it previously threw INSUFFICIENT_FUNDS here.
+      const r = sendCurrency(
+        {
+          wif: TEST_WIF,
+          outputs: [{ currency: TEST_IADDR, satoshis: 5_000_00000000n, address: TEST_IADDR, addressType: 'ID', mintnew: true }],
+          utxos: [nativeUtxo],
+          changeAddress: TEST_ADDR,
+          expiryHeight: 0,
+        },
+        'testnet',
+      );
+      expect(r.txid).toMatch(/^[0-9a-f]{64}$/);
+      const rt = reserveTransferOf(r.signedTx);
+      expect(rt.isMint()).toBe(true);
+      expect(rt.isConversion()).toBe(false); // a mint may not convert (daemon rejects)
+    });
+
+    it('sets the burn-change-price flag for a burn', () => {
+      // Flag-serialization check only: a real burn targets a token / fractional
+      // currency (the daemon rejects burning the native currency) and funds that
+      // currency as input. This asserts the SDK emits the BURN_CHANGE_PRICE flag.
+      const r = sendCurrency(
+        {
+          wif: TEST_WIF,
+          outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 10_000n, address: TEST_IADDR, addressType: 'ID', burn: true }],
+          utxos: [nativeUtxo],
+          changeAddress: TEST_ADDR,
+          expiryHeight: 0,
+        },
+        'testnet',
+      );
+      const rt = reserveTransferOf(r.signedTx);
+      expect(rt.isBurnChangePrice()).toBe(true);
+      expect(rt.isMint()).toBe(false);
+    });
+
+    it('rejects mintnew combined with a conversion', () => {
+      expect(() =>
+        sendCurrency(
+          {
+            wif: TEST_WIF,
+            outputs: [{ currency: TEST_IADDR, satoshis: 1n, address: TEST_IADDR, addressType: 'ID', mintnew: true, convertTo: TEST_IADDR }],
+            utxos: [nativeUtxo],
+            changeAddress: TEST_ADDR,
+            expiryHeight: 0,
+          },
+          'testnet',
+        ),
+      ).toThrow(/mintnew cannot be combined/);
     });
   });
 });

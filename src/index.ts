@@ -44,6 +44,24 @@ export type {
 export { classifyCurrency, CURRENCY_TYPE_ORDER } from './currency/classify.js';
 export type { CurrencyType } from './currency/classify.js';
 
+// Structured currency-definition builder (also available via currency namespace)
+export {
+  serializeCurrencyDefinition,
+  buildCurrencyDefinitionScript,
+  CURRENCY_OPTION,
+  NOTARIZATION_PROTOCOL,
+  PROOF_PROTOCOL,
+} from './currency/definition.js';
+export type { CurrencyDefinitionInput } from './currency/definition.js';
+
+// Full offline currency-launch output builder (all 7 outputs, byte-equivalent to definecurrency)
+export { buildCurrencyLaunchOutputs } from './currency/outputs.js';
+export type { CurrencyLaunchContext, CurrencyLaunchOutputs, CurrencyLaunchOutput } from './currency/outputs.js';
+export { buildCurrencyLaunchTransaction } from './currency/launch.js';
+export type { CurrencyLaunchTxParams, CurrencyLaunchTxResult } from './currency/launch.js';
+export { buildReserveTransferOutput } from './currency/reserveTransfer.js';
+export type { ReserveTransferParams, ReserveTransferBuildResult } from './currency/reserveTransfer.js';
+
 // Address utilities (also available via address namespace)
 export {
   BASE58_RE,

@@ -57,6 +57,7 @@ import * as transferModule from './transfer/index.js';
 import * as identityModule from './identity/index.js';
 import * as messageModule from './message/index.js';
 import * as currencyModule from './currency/index.js';
+import type { CurrencyDefinitionInput } from './currency/definition.js';
 import * as keysModule from './keys/index.js';
 import * as offersModule from './offers/public.js';
 import * as multisigModule from './identity/multisig.js';
@@ -206,9 +207,54 @@ export class VerusSDK {
 
   // ─── Currency ──────────────────────────────────────
 
-  /** Define a new currency (manual mode — pre-built script) */
+  /**
+   * Assemble the identity-spend + currency-definition output for a currency.
+   *
+   * A partial helper — NOT a full launch. For a complete, broadcastable launch
+   * built entirely offline (all seven outputs), use
+   * {@link VerusSDK.buildCurrencyLaunchTransaction}. To build only the definition
+   * output script, use {@link VerusSDK.buildCurrencyDefinitionScript}.
+   */
   defineCurrency(params: DefineCurrencyParams): DefineCurrencyResult {
     return currencyModule.defineCurrency(params, this.network);
+  }
+
+  /**
+   * Serialize a currency definition (token or fractional basket) to its
+   * EVAL_CURRENCY_DEFINITION output script — offline, byte-equivalent to the
+   * daemon's `definecurrency`. For building/inspecting/verifying the definition
+   * script; a full on-chain launch is a daemon operation (see `defineCurrency`).
+   */
+  buildCurrencyDefinitionScript(input: CurrencyDefinitionInput): string {
+    return currencyModule.buildCurrencyDefinitionScript(input);
+  }
+
+  /**
+   * Build all seven output scripts of a currency-definition transaction offline,
+   * byte-equivalent to `definecurrency` — identity update, currency definition,
+   * import, notarization (with currency state), export, reserve deposit, and
+   * change. Needs the defining identity (from a lite node's `getidentity`), the
+   * current chain tip height, and the chain's currency launch fee. Produces the
+   * output scripts; funding, the identity input, and signing are assembled
+   * separately (see `CurrencyLaunchContext`).
+   */
+  buildCurrencyLaunchOutputs(
+    input: CurrencyDefinitionInput,
+    context: currencyModule.CurrencyLaunchContext,
+  ): currencyModule.CurrencyLaunchOutputs {
+    return currencyModule.buildCurrencyLaunchOutputs(input, context);
+  }
+
+  /**
+   * Build and sign a full, broadcastable currency-definition transaction offline:
+   * the seven byte-locked outputs, funded from the supplied UTXOs, with the
+   * defining identity spent under primary authority. Hand the signed hex to any
+   * node to launch the currency. See `CurrencyLaunchTxParams`.
+   */
+  buildCurrencyLaunchTransaction(
+    params: currencyModule.CurrencyLaunchTxParams,
+  ): currencyModule.CurrencyLaunchTxResult {
+    return currencyModule.buildCurrencyLaunchTransaction(params, this.network);
   }
 
   // ─── Message Signing ───────────────────────────────

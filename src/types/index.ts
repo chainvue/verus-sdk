@@ -112,6 +112,18 @@ export interface CurrencyOutput {
   feeSatoshis?: bigint;
   /** Pre-conversion flag */
   preconvert?: boolean;
+  /**
+   * Mint new supply of a centralized currency. Only valid when the transaction is
+   * funded from — and signed for — the currency's own controlling identity (the
+   * `currency` here must be a same-chain `proofProtocol: 2` token whose id equals
+   * the source): the daemon rejects a mint that isn't authorized by the currency
+   * id. Cannot be combined with a conversion.
+   */
+  mintnew?: boolean;
+  /** Burn currency (reduce supply / change price). Burns the sender's own holdings. */
+  burn?: boolean;
+  /** Burn to change a fractional currency's reserve weight (advanced). */
+  burnweight?: boolean;
 }
 
 /** Full send_currency parameters */
@@ -300,11 +312,25 @@ export interface RecoverIdentityParams {
   expiryHeight: number;
 }
 
-/** Define currency parameters (manual mode only) */
+/**
+ * Define currency parameters (partial helper).
+ *
+ * This helper only spends the identity, sets FLAG_ACTIVECURRENCY, and attaches a
+ * pre-built currency-definition output + change — it does NOT assemble a full
+ * launch. For a complete, broadcastable currency launch built entirely offline
+ * (all seven outputs, byte-equivalent to `definecurrency`), use
+ * `currency.buildCurrencyLaunchTransaction` instead. To build just the
+ * definition output script, use `currency.buildCurrencyDefinitionScript`.
+ */
 export interface DefineCurrencyParams {
   wif: string;
   identityHex: string;
   identityUtxo: Utxo;
+  /**
+   * Pre-built currency definition script hex — e.g. from
+   * `currency.buildCurrencyDefinitionScript` (token / fractional basket) or
+   * another source for gateway/PBaaS definitions.
+   */
   currencyDefScript: string;
   currencyDefValue?: bigint;
   utxos: Utxo[];

@@ -162,18 +162,38 @@ export function sendCurrency(
   const systemId = networkConfig.chainId;
   const expiryHeight = resolveExpiryHeight(params.expiryHeight);
 
-  const txOutputs = params.outputs.map((out) => ({
-    currency: out.currency,
-    satoshis: out.satoshis.toString(10),
-    address: parseAddress(out.address, out.addressType || 'PKH'),
-    ...(out.convertTo !== undefined ? { convertto: out.convertTo } : {}),
-    ...(out.exportTo !== undefined ? { exportto: out.exportTo } : {}),
-    ...(out.via !== undefined ? { via: out.via } : {}),
-    ...(out.bridgeId !== undefined ? { bridgeid: out.bridgeId } : {}),
-    ...(out.feeCurrency !== undefined ? { feecurrency: out.feeCurrency } : {}),
-    ...(out.feeSatoshis !== undefined ? { feesatoshis: out.feeSatoshis.toString(10) } : {}),
-    ...(out.preconvert !== undefined ? { preconvert: out.preconvert } : {}),
-  }));
+  // A mint creates supply and cannot also convert, pre-convert, or burn in the
+  // same output (reserves.h:369, pbaasrpc.cpp:11550) — fail early instead of
+  // building a transaction the daemon rejects.
+  for (const out of params.outputs) {
+    if (out.mintnew && (out.convertTo !== undefined || out.preconvert || out.burn || out.burnweight)) {
+      throw new TransactionBuildError('mintnew cannot be combined with convertTo, preconvert, or burn');
+    }
+  }
+
+  const txOutputs = params.outputs.map((out) => {
+    // mint/burn must be carried by a reserve transfer, but the fork only builds one
+    // when a fee/convert/export/via field is present. A conversion field is wrong
+    // here (mint/burn cannot convert), so trigger the reserve-transfer path with a
+    // native fee currency when the caller didn't set one.
+    const forcesReserveTransfer = out.mintnew || out.burn || out.burnweight;
+    const feecurrency = out.feeCurrency ?? (forcesReserveTransfer ? systemId : undefined);
+    return {
+      currency: out.currency,
+      satoshis: out.satoshis.toString(10),
+      address: parseAddress(out.address, out.addressType || 'PKH'),
+      ...(out.convertTo !== undefined ? { convertto: out.convertTo } : {}),
+      ...(out.exportTo !== undefined ? { exportto: out.exportTo } : {}),
+      ...(out.via !== undefined ? { via: out.via } : {}),
+      ...(out.bridgeId !== undefined ? { bridgeid: out.bridgeId } : {}),
+      ...(feecurrency !== undefined ? { feecurrency } : {}),
+      ...(out.feeSatoshis !== undefined ? { feesatoshis: out.feeSatoshis.toString(10) } : {}),
+      ...(out.preconvert !== undefined ? { preconvert: out.preconvert } : {}),
+      ...(out.mintnew !== undefined ? { mintnew: out.mintnew } : {}),
+      ...(out.burn !== undefined ? { burn: out.burn } : {}),
+      ...(out.burnweight !== undefined ? { burnweight: out.burnweight } : {}),
+    };
+  });
 
   const unfundedTxHex = createUnfundedCurrencyTransfer(
     systemId,
@@ -185,12 +205,17 @@ export function sendCurrency(
   const unfundedTx = Transaction.fromHex(unfundedTxHex, verusNetwork);
 
   const hasSmartOutputs = params.outputs.some(
-    (o) => o.convertTo || o.exportTo || o.via || o.currency !== systemId
+    (o) => o.convertTo || o.exportTo || o.via || o.mintnew || o.burn || o.burnweight || o.currency !== systemId
   );
 
   const requiredCurrencies = new Map<string, bigint>();
   for (const out of params.outputs) {
-    if (out.currency !== systemId) {
+    // A `mintnew` output CREATES new supply of a centralized currency; it is not
+    // funded from inputs (the daemon authorizes the mint via an input controlled
+    // by the currency id, not by spending that currency). Counting it as a
+    // required input would demand token funding that, by definition, doesn't
+    // exist — so exclude it from both selection and the conservation check.
+    if (out.currency !== systemId && !out.mintnew) {
       requiredCurrencies.set(
         out.currency,
         (requiredCurrencies.get(out.currency) || 0n) + out.satoshis,

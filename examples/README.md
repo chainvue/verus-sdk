@@ -25,3 +25,4 @@ or a link step — the one line that differs from consumer code.
 | `keygen-and-address.cjs` | `generateWif`, `deriveAddress`, `deriveIdentityAddress`, `validate*` |
 | `transfer.cjs` | build + sign a native transfer offline, then decode it back |
 | `sign-verify-message.cjs` | VerusID message sign → verify roundtrip |
+| `create-currency.cjs` | build token / fractional-basket / NFT definition scripts offline |

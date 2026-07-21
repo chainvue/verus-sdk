@@ -1,18 +1,46 @@
 /**
- * Currency definition (manual mode only — offline)
+ * Currency helpers — all offline, byte-equivalent to the daemon.
  *
- * Creates a currency definition transaction. Requires a pre-built
- * currency definition script hex (obtained externally).
+ * - `buildCurrencyDefinitionScript` / `serializeCurrencyDefinition`: the
+ *   EVAL_CURRENCY_DEFINITION output script (token, fractional basket, or NFT).
+ * - `buildCurrencyLaunchOutputs`: all seven outputs of a currency-definition tx.
+ * - `buildCurrencyLaunchTransaction`: a complete, signed, broadcastable launch.
+ * - `buildReserveTransferOutput`: the (pre)convert output for investing in a
+ *   launching currency.
  *
- * Currency creation requires:
- * 1. An existing identity with the same name
- * 2. The identity's FLAG_ACTIVECURRENCY must be set
- * 3. A currency definition output (EVAL_CURRENCY_DEFINITION)
+ * `defineCurrency` is a narrower helper (identity-spend + a pre-built definition
+ * output + change); prefer `buildCurrencyLaunchTransaction` for a full launch.
  */
 
 // Re-export classification utilities
 export { classifyCurrency, CURRENCY_TYPE_ORDER } from './classify.js';
 export type { CurrencyType } from './classify.js';
+
+// Structured currency-definition builder (token / fractional basket)
+export {
+  serializeCurrencyDefinition,
+  buildCurrencyDefinitionScript,
+  CURRENCY_OPTION,
+  CURRENCY_DEFINITION_VERSION,
+  NOTARIZATION_PROTOCOL,
+  PROOF_PROTOCOL,
+} from './definition.js';
+export type { CurrencyDefinitionInput } from './definition.js';
+
+// Full offline currency-launch output builder (all 7 outputs, byte-equivalent to
+// definecurrency): identity update, currency def, import, notarization, export,
+// reserve deposit, change.
+export { buildCurrencyLaunchOutputs } from './outputs.js';
+export type { CurrencyLaunchContext, CurrencyLaunchOutputs, CurrencyLaunchOutput } from './outputs.js';
+
+// Full offline currency-launch transaction (outputs + funding + identity input + signing).
+export { buildCurrencyLaunchTransaction } from './launch.js';
+export type { CurrencyLaunchTxParams, CurrencyLaunchTxResult } from './launch.js';
+
+// Reserve-transfer output: (pre)convert a reserve into a fractional currency
+// ("invest at launch").
+export { buildReserveTransferOutput } from './reserveTransfer.js';
+export type { ReserveTransferParams, ReserveTransferBuildResult } from './reserveTransfer.js';
 
 import { Identity, IdentityScript } from '../fork/boundary.js';
 import BN from 'bn.js';
@@ -50,6 +78,7 @@ export function defineCurrency(
   if (!params.currencyDefScript) {
     throw new TransactionBuildError('currencyDefScript is required');
   }
+  const currencyDefScriptHex = params.currencyDefScript;
 
   const verusNetwork = getNetwork(network === 'testnet');
   const currencyDefValue = params.currencyDefValue || 0n;
@@ -70,7 +99,7 @@ export function defineCurrency(
 
   const identityScript = IdentityScript.fromIdentity(identity);
   const identityOutputScript = identityScript.toBuffer();
-  const currencyDefScript = Buffer.from(params.currencyDefScript, 'hex');
+  const currencyDefScript = Buffer.from(currencyDefScriptHex, 'hex');
 
   // Respend the identity UTXO, recreating its (value-0) definition output with
   // FLAG_ACTIVECURRENCY set, alongside the currency-definition output. The shared
