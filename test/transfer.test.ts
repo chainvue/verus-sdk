@@ -341,10 +341,12 @@ describe('transfer', () => {
     });
 
     it('sets the burn-change-price flag for a burn', () => {
+      // Flag-serialization check only: a real burn targets a token / fractional
+      // currency (the daemon rejects burning the native currency) and funds that
+      // currency as input. This asserts the SDK emits the BURN_CHANGE_PRICE flag.
       const r = sendCurrency(
         {
           wif: TEST_WIF,
-          // Burn native back to the chain (a burn spends the sender's own holdings).
           outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 10_000n, address: TEST_IADDR, addressType: 'ID', burn: true }],
           utxos: [nativeUtxo],
           changeAddress: TEST_ADDR,
@@ -355,6 +357,21 @@ describe('transfer', () => {
       const rt = reserveTransferOf(r.signedTx);
       expect(rt.isBurnChangePrice()).toBe(true);
       expect(rt.isMint()).toBe(false);
+    });
+
+    it('rejects mintnew combined with a conversion', () => {
+      expect(() =>
+        sendCurrency(
+          {
+            wif: TEST_WIF,
+            outputs: [{ currency: TEST_IADDR, satoshis: 1n, address: TEST_IADDR, addressType: 'ID', mintnew: true, convertTo: TEST_IADDR }],
+            utxos: [nativeUtxo],
+            changeAddress: TEST_ADDR,
+            expiryHeight: 0,
+          },
+          'testnet',
+        ),
+      ).toThrow(/mintnew cannot be combined/);
     });
   });
 });

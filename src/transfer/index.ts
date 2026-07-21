@@ -162,6 +162,15 @@ export function sendCurrency(
   const systemId = networkConfig.chainId;
   const expiryHeight = resolveExpiryHeight(params.expiryHeight);
 
+  // A mint creates supply and cannot also convert, pre-convert, or burn in the
+  // same output (reserves.h:369, pbaasrpc.cpp:11550) — fail early instead of
+  // building a transaction the daemon rejects.
+  for (const out of params.outputs) {
+    if (out.mintnew && (out.convertTo !== undefined || out.preconvert || out.burn || out.burnweight)) {
+      throw new TransactionBuildError('mintnew cannot be combined with convertTo, preconvert, or burn');
+    }
+  }
+
   const txOutputs = params.outputs.map((out) => {
     // mint/burn must be carried by a reserve transfer, but the fork only builds one
     // when a fee/convert/export/via field is present. A conversion field is wrong
