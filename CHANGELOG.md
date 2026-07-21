@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/chainvue/verus-sdk/compare/v0.14.0...v0.14.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **transfer:** require feeSatoshis for a non-native fee currency ([#86](https://github.com/chainvue/verus-sdk/issues/86)) ([a5b9b7d](https://github.com/chainvue/verus-sdk/commit/a5b9b7d7cd8d181df926ef86772424fdd4c836bd))
+
 # [0.14.0](https://github.com/chainvue/verus-sdk/compare/v0.13.0...v0.14.0) (2026-07-21)
 
 
