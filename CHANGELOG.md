@@ -1,5 +1,20 @@
 # Changelog
 
+# [0.14.0](https://github.com/chainvue/verus-sdk/compare/v0.13.0...v0.14.0) (2026-07-21)
+
+
+### Bug Fixes
+
+* **currency:** enforce the daemon's consensus limits offline ([4dd42b3](https://github.com/chainvue/verus-sdk/commit/4dd42b32b6dc32213d21e339f7f555ca45f0e34b))
+* **currency:** harden input validation (review pass) ([5ba050e](https://github.com/chainvue/verus-sdk/commit/5ba050ec1c31434085ac5e73e0f3d4737da70691))
+* **transfer:** reject mintnew combined with convert/preconvert/burn ([5152712](https://github.com/chainvue/verus-sdk/commit/5152712515402924ed01f613009a125ee4196362))
+
+
+### Features
+
+* **currency:** offline currency creation — definition, launch tx, preconvert, NFT ([a5553ea](https://github.com/chainvue/verus-sdk/commit/a5553eaf545529125261e62db2765b7d06fd7066))
+* **transfer:** mint and burn a centralized currency via sendCurrency ([c36e532](https://github.com/chainvue/verus-sdk/commit/c36e532de5e28976da359497298e26d6a5a2394e))
+
 # [0.13.0](https://github.com/chainvue/verus-sdk/compare/v0.12.0...v0.13.0) (2026-07-20)
 
 
