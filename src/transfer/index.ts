@@ -162,12 +162,20 @@ export function sendCurrency(
   const systemId = networkConfig.chainId;
   const expiryHeight = resolveExpiryHeight(params.expiryHeight);
 
-  // A mint creates supply and cannot also convert, pre-convert, or burn in the
-  // same output (reserves.h:369, pbaasrpc.cpp:11550) — fail early instead of
-  // building a transaction the daemon rejects.
   for (const out of params.outputs) {
+    // A mint creates supply and cannot also convert, pre-convert, or burn in the
+    // same output (reserves.h:369, pbaasrpc.cpp:11550) — fail early instead of
+    // building a transaction the daemon rejects.
     if (out.mintnew && (out.convertTo !== undefined || out.preconvert || out.burn || out.burnweight)) {
       throw new TransactionBuildError('mintnew cannot be combined with convertTo, preconvert, or burn');
+    }
+    // A non-native fee currency needs an explicit feeSatoshis. Otherwise the fork
+    // applies a placeholder default (300000) that this SDK would not fund from a
+    // token input, under-funding the reserve transfer's fee → daemon rejection.
+    // The correct token fee is conversion-dependent, so the caller must supply it
+    // (e.g. from `sendcurrency … returntxtemplate`).
+    if (out.feeCurrency !== undefined && out.feeCurrency !== systemId && out.feeSatoshis === undefined) {
+      throw new TransactionBuildError('feeSatoshis is required when feeCurrency is a non-native token (the exact fee is conversion-dependent — query the node and pass it explicitly)');
     }
   }
 

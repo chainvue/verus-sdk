@@ -359,6 +359,22 @@ describe('transfer', () => {
       expect(rt.isMint()).toBe(false);
     });
 
+    it('requires explicit feeSatoshis for a non-native fee currency', () => {
+      // Otherwise the fork's placeholder default fee would be left unfunded.
+      expect(() =>
+        sendCurrency(
+          {
+            wif: TEST_WIF,
+            outputs: [{ currency: TEST_IADDR, satoshis: 1_000n, address: TEST_IADDR, addressType: 'ID', feeCurrency: TEST_IADDR }],
+            utxos: [nativeUtxo],
+            changeAddress: TEST_ADDR,
+            expiryHeight: 0,
+          },
+          'testnet',
+        ),
+      ).toThrow(/feeSatoshis is required when feeCurrency/);
+    });
+
     it('rejects mintnew combined with a conversion', () => {
       expect(() =>
         sendCurrency(
