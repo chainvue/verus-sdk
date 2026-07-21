@@ -32,6 +32,7 @@ import { writeCompactSize } from '../utils/index.js';
 import { TransactionBuildError } from '../errors.js';
 import {
   requireInt32Range,
+  requireInt64Range,
   int32LE,
   uint32LE,
   int64LE,
@@ -242,6 +243,12 @@ export function normalizeCurrencyDefinition(input: CurrencyDefinitionInput): Nor
     if (input.minPreconversion || input.maxPreconversion) {
       throw new TransactionBuildError('do not set min/maxPreconversion for an NFT — they are fixed (maxPreconversion=[0])');
     }
+    if ((input.initialSupply ?? 0n) !== 0n || (input.preLaunchDiscount ?? 0n) !== 0n) {
+      throw new TransactionBuildError('an NFT takes no initialSupply or preLaunchDiscount — its supply is the single 1-satoshi token');
+    }
+    if ((input.preLaunchCarveOut ?? 0) !== 0) {
+      throw new TransactionBuildError('an NFT takes no preLaunchCarveOut');
+    }
     const proofProtocol = input.proofProtocol ?? PROOF_PROTOCOL.PBAASMMR;
     if (proofProtocol === PROOF_PROTOCOL.CHAINID) {
       throw new TransactionBuildError('an NFT may not use a centralized proof protocol (CHAINID/2); use PBAASMMR (1)');
@@ -290,25 +297,65 @@ export function normalizeCurrencyDefinition(input: CurrencyDefinitionInput): Nor
   if (!isFractional && currencies.length > 0) {
     throw new TransactionBuildError('reserve currencies require the FRACTIONAL bit (0x01)');
   }
-  // A fractional currency has no sensible default weighting: the daemon requires
-  // one weight per reserve, so an omitted/short `weights` would serialize to a
-  // definition the daemon rejects. Fail closed here instead.
-  if (isFractional && (input.weights === undefined || input.weights.length !== currencies.length)) {
-    throw new TransactionBuildError(`a fractional currency requires one weight per reserve currency (${currencies.length})`);
+  if (isFractional) {
+    // The daemon requires one weight per reserve and a positive initial supply.
+    // (It even-splits omitted weights, distributing the remainder to the FIRST
+    // currencies — a byte pattern the explicit path here can't reproduce — so
+    // fail closed and require explicit, already-relative weights instead.)
+    if (input.weights === undefined || input.weights.length !== currencies.length) {
+      throw new TransactionBuildError(`a fractional currency requires one weight per reserve currency (${currencies.length})`);
+    }
+    if ((input.initialSupply ?? 0n) <= 0n) {
+      throw new TransactionBuildError('a fractional currency requires a positive initialSupply (the daemon rejects zero)');
+    }
+  } else {
+    // A non-fractional token has no reserve pool: the daemon reads initialSupply
+    // and preLaunchDiscount only for fractional currencies, so accepting them
+    // would serialize a definition `definecurrency` never emits (rejected at
+    // broadcast). Fail closed, mirroring the `conversions` rejection above.
+    if (input.initialSupply !== undefined && input.initialSupply !== 0n) {
+      throw new TransactionBuildError('initialSupply applies only to a FRACTIONAL currency');
+    }
+    if (input.preLaunchDiscount !== undefined && input.preLaunchDiscount !== 0n) {
+      throw new TransactionBuildError('preLaunchDiscount applies only to a FRACTIONAL currency');
+    }
   }
 
-  // Reserve-currency vectors, when present, must all match the currency count.
-  // The daemon leaves min/max-preconversion empty when unspecified but zero-fills
-  // conversions / contributions / preconverted to the currency count; mirror that
-  // so an omitted field serializes identically to what `definecurrency` produces.
-  const checkLen = (arr: bigint[], label: string): bigint[] => {
+  // Scalar-range checks the daemon enforces (crosschainrpc.cpp): block heights are
+  // non-negative integers, carve-out is non-negative, and every pre-allocation is
+  // a positive amount. Catch them here rather than serialize an unbroadcastable tx.
+  const requireBlock = (v: number, label: string): void => {
+    if (!Number.isInteger(v) || v < 0) {
+      throw new TransactionBuildError(`${label} must be a non-negative integer block height, got ${v}`);
+    }
+  };
+  requireBlock(input.startBlock ?? 0, 'startBlock');
+  requireBlock(input.endBlock ?? 0, 'endBlock');
+  if ((input.preLaunchCarveOut ?? 0) < 0) {
+    throw new TransactionBuildError('preLaunchCarveOut must be non-negative');
+  }
+  (input.preAllocations ?? []).forEach((p, i) => {
+    if (p.amount <= 0n) {
+      throw new TransactionBuildError(`preAllocations[${i}].amount must be positive, got ${p.amount}`);
+    }
+  });
+
+  // Reserve-currency vectors, when present, must all match the currency count and
+  // hold non-negative amounts (the daemon rejects negatives). The daemon leaves
+  // min/max-preconversion empty when unspecified but zero-fills conversions /
+  // contributions / preconverted to the currency count; mirror that so an omitted
+  // field serializes identically to what `definecurrency` produces.
+  const checkVec = (arr: bigint[], label: string): bigint[] => {
     if (arr.length !== currencies.length) {
       throw new TransactionBuildError(`${label} must have one entry per reserve currency (${currencies.length}), got ${arr.length}`);
     }
+    arr.forEach((v, i) => {
+      if (v < 0n) throw new TransactionBuildError(`${label}[${i}] must be non-negative, got ${v}`);
+    });
     return arr;
   };
   const emptyOr = (arr: bigint[] | undefined, label: string): bigint[] =>
-    arr === undefined ? [] : checkLen(arr, label);
+    arr === undefined ? [] : checkVec(arr, label);
   const zeros = (): bigint[] => new Array<bigint>(currencies.length).fill(0n);
 
   const minPreconversion = emptyOr(input.minPreconversion, 'minPreconversion');
@@ -358,9 +405,9 @@ export function normalizeCurrencyDefinition(input: CurrencyDefinitionInput): Nor
     preLaunchCarveOut: input.preLaunchCarveOut ?? 0,
     notaries: [],
     minNotariesConfirm: 0,
-    idRegistrationFees: input.idRegistrationFees ?? DEFAULT_ID_REGISTRATION_FEE,
+    idRegistrationFees: requireInt64Range(input.idRegistrationFees ?? DEFAULT_ID_REGISTRATION_FEE, 'idRegistrationFees'),
     idReferralLevels: input.idReferralLevels ?? DEFAULT_ID_REFERRAL_LEVELS,
-    idImportFees: input.idImportFees ?? DEFAULT_ID_IMPORT_FEE,
+    idImportFees: requireInt64Range(input.idImportFees ?? DEFAULT_ID_IMPORT_FEE, 'idImportFees'),
   };
 }
 

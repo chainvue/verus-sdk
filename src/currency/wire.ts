@@ -36,6 +36,16 @@ export function requireInt32Range(value: bigint, label: string): bigint {
   return value;
 }
 
+const INT64_MAX = 2n ** 63n - 1n;
+
+/** Assert a bigint fits a non-negative int64 (VARINT-encoded CAmount fee fields). */
+export function requireInt64Range(value: bigint, label: string): bigint {
+  if (value < 0n || value > INT64_MAX) {
+    throw new TransactionBuildError(`${label} must be in [0, 2^63-1], got ${value}`);
+  }
+  return value;
+}
+
 /** Little-endian int16 (uint16 domain — flags/versions are small non-negative). */
 export function uint16LE(value: number, label: string): Buffer {
   if (!Number.isInteger(value) || value < 0 || value > 0xffff) {

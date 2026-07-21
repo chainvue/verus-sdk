@@ -278,6 +278,7 @@ describe('normalize — scope and validation guards', () => {
         options: CURRENCY_OPTION.TOKEN | CURRENCY_OPTION.FRACTIONAL,
         currencies: [VRSCTEST, 'iDMAoXEjZLkpofokBGsVwen7YEwo1iujMQ'],
         weights: [50_000_000n, 50_000_000n],
+        initialSupply: 1n,
         minPreconversion: [0n], // only one, needs two
       }),
     ).toThrow(/one entry per reserve currency/);
@@ -316,6 +317,7 @@ describe('normalize — scope and validation guards', () => {
         options: CURRENCY_OPTION.TOKEN | CURRENCY_OPTION.FRACTIONAL,
         currencies: [VRSCTEST, 'iDMAoXEjZLkpofokBGsVwen7YEwo1iujMQ'],
         weights: [50_000_000n, 50_000_000n],
+        initialSupply: 1n,
         minPreconversion: [100n, 50n],
         maxPreconversion: [100n, 40n], // second max < its min
       }),
@@ -329,6 +331,7 @@ describe('normalize — scope and validation guards', () => {
         options: CURRENCY_OPTION.TOKEN | CURRENCY_OPTION.FRACTIONAL,
         currencies: [VRSCTEST, 'iDMAoXEjZLkpofokBGsVwen7YEwo1iujMQ'],
         weights: [100_000_000n, 0n],
+        initialSupply: 1n,
       }),
     ).toThrow(/weight must be > 0/);
   });
@@ -342,8 +345,17 @@ describe('normalize — scope and validation guards', () => {
   });
 
   it('rejects a preLaunchDiscount outside int32 range', () => {
-    expect(() => serializeCurrencyDefinition({ ...base, preLaunchDiscount: 2_147_483_648n })).toThrow(/preLaunchDiscount must be in/);
-    expect(() => serializeCurrencyDefinition({ ...base, preLaunchDiscount: -1n })).toThrow(/preLaunchDiscount must be in/);
+    // preLaunchDiscount only applies to a fractional currency, so isolate the
+    // int32-range guard with an otherwise-valid fractional definition.
+    const frac = {
+      ...base,
+      options: CURRENCY_OPTION.TOKEN | CURRENCY_OPTION.FRACTIONAL,
+      currencies: [VRSCTEST],
+      weights: [100_000_000n],
+      initialSupply: 1n,
+    };
+    expect(() => serializeCurrencyDefinition({ ...frac, preLaunchDiscount: 2_147_483_648n })).toThrow(/preLaunchDiscount must be in/);
+    expect(() => serializeCurrencyDefinition({ ...frac, preLaunchDiscount: -1n })).toThrow(/preLaunchDiscount must be in/);
   });
 
   it('rejects a non-i-address reserve currency', () => {
@@ -354,5 +366,55 @@ describe('normalize — scope and validation guards', () => {
         currencies: ['RXhr5nLgQugQF84fHo5Rz39joVvNjQdGjm'],
       }),
     ).toThrow();
+  });
+});
+
+describe('input-validation hardening', () => {
+  const base: CurrencyDefinitionInput = { name: 'X', parent: VRSCTEST, options: CURRENCY_OPTION.TOKEN };
+  const frac = (over: Partial<CurrencyDefinitionInput> = {}): CurrencyDefinitionInput => ({
+    ...base,
+    options: CURRENCY_OPTION.TOKEN | CURRENCY_OPTION.FRACTIONAL,
+    currencies: [VRSCTEST],
+    weights: [100_000_000n],
+    initialSupply: 1_000_000_000_000n,
+    ...over,
+  });
+
+  it('requires a positive initialSupply for a fractional currency', () => {
+    expect(() => serializeCurrencyDefinition(frac({ initialSupply: 0n }))).toThrow(/positive initialSupply/);
+    const { initialSupply: _omit, ...noSupply } = frac();
+    void _omit;
+    expect(() => serializeCurrencyDefinition(noSupply)).toThrow(/positive initialSupply/);
+  });
+
+  it('rejects initialSupply / preLaunchDiscount on a non-fractional token', () => {
+    expect(() => serializeCurrencyDefinition({ ...base, initialSupply: 100n })).toThrow(/initialSupply applies only to a FRACTIONAL/);
+    expect(() => serializeCurrencyDefinition({ ...base, preLaunchDiscount: 5n })).toThrow(/preLaunchDiscount applies only to a FRACTIONAL/);
+  });
+
+  it('rejects a non-positive pre-allocation amount', () => {
+    expect(() => serializeCurrencyDefinition({ ...base, preAllocations: [{ address: VRSCTEST, amount: 0n }] })).toThrow(/must be positive/);
+    expect(() => serializeCurrencyDefinition({ ...base, preAllocations: [{ address: VRSCTEST, amount: -1n }] })).toThrow(/must be positive/);
+  });
+
+  it('rejects negative reserve amounts (min/max preconversion, carve-out)', () => {
+    expect(() => serializeCurrencyDefinition(frac({ minPreconversion: [-1n] }))).toThrow(/minPreconversion\[0\] must be non-negative/);
+    expect(() => serializeCurrencyDefinition(frac({ maxPreconversion: [-1n] }))).toThrow(/maxPreconversion\[0\] must be non-negative/);
+    expect(() => serializeCurrencyDefinition(frac({ preLaunchCarveOut: -1 }))).toThrow(/preLaunchCarveOut must be non-negative/);
+  });
+
+  it('catches a negative maxPreconversion even when minPreconversion is absent', () => {
+    // The max ≥ min cross-check only runs when both arrays are present; the
+    // non-negative guard must catch this independently.
+    expect(() => serializeCurrencyDefinition(frac({ maxPreconversion: [-5n] }))).toThrow(/non-negative/);
+  });
+
+  it('rejects a non-integer start block', () => {
+    expect(() => serializeCurrencyDefinition({ ...base, startBlock: 1.5 })).toThrow(/non-negative integer block height/);
+    expect(() => serializeCurrencyDefinition({ ...base, startBlock: -1 })).toThrow(/non-negative integer block height/);
+  });
+
+  it('rejects a fee field beyond int64', () => {
+    expect(() => serializeCurrencyDefinition({ ...base, idRegistrationFees: 2n ** 63n })).toThrow(/idRegistrationFees must be in/);
   });
 });

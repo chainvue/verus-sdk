@@ -18,6 +18,7 @@
 import BN from 'bn.js';
 import { ReserveTransfer, TransferDestination, CurrencyValueMap } from '../fork/boundary.js';
 import { TransactionBuildError } from '../errors.js';
+import { parseIAddress } from '../core/brands.js';
 import { wrapCcOutput } from './wire.js';
 
 const EVAL_RESERVE_TRANSFER = 8;
@@ -78,7 +79,25 @@ export function buildReserveTransferOutput(params: ReserveTransferParams): Reser
   if (params.feeAmount < 0n) {
     throw new TransactionBuildError('feeAmount must be non-negative');
   }
+  // Every address MUST be a currency/identity i-address. The transfer destination
+  // is encoded as DEST_ID, so an R-address recipient would silently become an
+  // identity id equal to that hash160 — almost certainly a nonexistent identity —
+  // and the converted funds would be unrecoverable. parseIAddress rejects a
+  // non-i-address (wrong version byte or bad checksum) fail-closed. The currency
+  // ids get the same check so a wrong-typed address can't become a wrong currency.
+  parseIAddress(params.sourceCurrency, 'sourceCurrency');
+  parseIAddress(params.destCurrency, 'destCurrency');
+  parseIAddress(params.recipient, 'recipient');
+  if (params.refundAddress !== undefined) {
+    parseIAddress(params.refundAddress, 'refundAddress');
+  }
   const feeCurrency = params.feeCurrency ?? params.sourceCurrency;
+  parseIAddress(feeCurrency, 'feeCurrency');
+  // Native-reserve scope: the output value is amount + fee in a single currency,
+  // so a different fee currency would make that value wrong. Require them equal.
+  if (feeCurrency !== params.sourceCurrency) {
+    throw new TransactionBuildError('feeCurrency must equal sourceCurrency (this builder handles native-reserve transfers only)');
+  }
 
   const flags = RT_VALID | RT_CONVERT | (params.preconvert ? RT_PRECONVERT : 0);
 

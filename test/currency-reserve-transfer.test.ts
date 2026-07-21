@@ -78,4 +78,26 @@ describe('buildReserveTransferOutput — byte-locked against live sendcurrency',
       buildReserveTransferOutput({ sourceCurrency: VRSCTEST, amount: 0n, destCurrency: BANKROLL, recipient: RECIPIENT, feeAmount: 20_010n }),
     ).toThrow(TransactionBuildError);
   });
+
+  // The destination is encoded as DEST_ID; an R-address would silently become an
+  // identity id and the funds would be unrecoverable. All addresses must be i-addresses.
+  const R_ADDRESS = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';
+  const ok = { sourceCurrency: VRSCTEST, amount: 100_000_000n, destCurrency: BANKROLL, recipient: RECIPIENT, feeAmount: 20_010n };
+
+  it('rejects an R-address recipient (would misroute funds to a nonexistent identity)', () => {
+    expect(() => buildReserveTransferOutput({ ...ok, recipient: R_ADDRESS })).toThrow(/recipient/);
+  });
+
+  it('rejects an R-address refund address', () => {
+    expect(() => buildReserveTransferOutput({ ...ok, refundAddress: R_ADDRESS })).toThrow(/refundAddress/);
+  });
+
+  it('rejects a non-i-address source/dest currency', () => {
+    expect(() => buildReserveTransferOutput({ ...ok, sourceCurrency: R_ADDRESS })).toThrow(/sourceCurrency/);
+    expect(() => buildReserveTransferOutput({ ...ok, destCurrency: R_ADDRESS })).toThrow(/destCurrency/);
+  });
+
+  it('rejects a fee currency that differs from the source (native scope)', () => {
+    expect(() => buildReserveTransferOutput({ ...ok, feeCurrency: BANKROLL })).toThrow(/feeCurrency must equal sourceCurrency/);
+  });
 });

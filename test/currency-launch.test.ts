@@ -123,4 +123,16 @@ describe('buildCurrencyLaunchTransaction — offline assembly + signing', () => 
       buildCurrencyLaunchTransaction({ ...baseParams(), fundingUtxos: [makeFundingUtxo('aa', 1_000n)] }, NETWORK),
     ).toThrow(/[Ii]nsufficient/);
   });
+
+  it('defaults expiry to height + delta, not 0 (never-expire)', () => {
+    // baseParams() sets no expiryHeight, so the tx must be bounded at
+    // height + DEFAULT_EXPIRY_DELTA (20), not left never-expiring. A matching
+    // explicit value yields the same txid; an explicit 0 (opt-in never-expire)
+    // yields a different one.
+    const defaulted = buildCurrencyLaunchTransaction(baseParams(), NETWORK);
+    const explicitDelta = buildCurrencyLaunchTransaction({ ...baseParams(), expiryHeight: HEIGHT + 20 }, NETWORK);
+    const neverExpire = buildCurrencyLaunchTransaction({ ...baseParams(), expiryHeight: 0 }, NETWORK);
+    expect(defaulted.txid).toBe(explicitDelta.txid);
+    expect(defaulted.txid).not.toBe(neverExpire.txid);
+  });
 });

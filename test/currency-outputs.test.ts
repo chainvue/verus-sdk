@@ -133,6 +133,15 @@ describe('buildCurrencyLaunchOutputs — byte-locked against live definecurrency
     ).toThrow(/identityaddress is required/);
   });
 
+  it('rejects an identity whose address does not match the currency name + parent', () => {
+    // A different i-address for the "kmerg" definition — the currency id derived
+    // from name+parent no longer matches, so the launch would be daemon-rejected.
+    const wrong = { ...KMERG_IDENTITY, identityaddress: 'iGfe9Pur1yEwWYE52hpb533YBpQpU4uvzt' };
+    expect(() =>
+      buildCurrencyLaunchOutputs(TOKEN_INPUT, { identity: wrong, height: TOKEN_HEIGHT, launchFeeSats: LAUNCH_FEE_SATS }),
+    ).toThrow(/identity mismatch/);
+  });
+
   // An NFT (tokenized ID control) launch, byte-locked against the live-accepted
   // daemon tx (kmerg NFT, def tx 8d8671d4…) at height 1156133. Exercises the NFT
   // path: identity output with TOKENIZED_ID_CONTROL, the native-currency-mapped

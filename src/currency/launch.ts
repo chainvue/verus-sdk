@@ -20,6 +20,7 @@
  */
 import { Identity } from '../fork/boundary.js';
 import type { Network } from '../constants/index.js';
+import { DEFAULT_EXPIRY_DELTA } from '../constants/index.js';
 import type { Utxo } from '../types/index.js';
 import { getNetwork } from '../signing/index.js';
 import { assertWifIsPrimary } from '../identity/index.js';
@@ -108,7 +109,10 @@ export function buildCurrencyLaunchTransaction(
   const assembled = assembleFundedIdentityUpdate({
     network,
     wif: params.wif,
-    expiryHeight: params.expiryHeight ?? 0,
+    // Default to a bounded expiry above the tip (matching the doc), NOT 0, which
+    // would silently make the transaction never expire. Pass expiryHeight: 0
+    // explicitly to opt into a never-expiring transaction.
+    expiryHeight: params.expiryHeight ?? params.height + DEFAULT_EXPIRY_DELTA,
     funding: params.fundingUtxos,
     identityUtxo: params.identityUtxo,
     outputs: consensusOutputs,

@@ -1,9 +1,14 @@
-# Currency definitions
+# Currencies
 
-The SDK serializes a Verus **currency definition** to its
-`EVAL_CURRENCY_DEFINITION` CryptoCondition output script, entirely offline and
-byte-for-byte identical to what the daemon's `definecurrency` produces for the
-same parameters.
+The SDK builds Verus currency-definition transactions **entirely offline**,
+byte-for-byte identical to what the daemon's `definecurrency` produces, and signs
+them from a WIF — the node never holds a key. It also builds the reserve-transfer
+output used to pre-convert ("invest") into a launching currency.
+
+## Building the definition output
+
+`buildCurrencyDefinitionScript(input)` returns the `EVAL_CURRENCY_DEFINITION`
+CryptoCondition output script for a token, a fractional basket, or an NFT.
 
 ```ts
 import { VerusSDK, CURRENCY_OPTION } from '@chainvue/verus-sdk';
@@ -26,50 +31,102 @@ const basketScript = sdk.buildCurrencyDefinitionScript({
   options: CURRENCY_OPTION.TOKEN | CURRENCY_OPTION.FRACTIONAL, // 0x21
   proofProtocol: 1,
   currencies: ['iJhCezBExJHvtyH3fGhNnt2NhU4Ztkf2yq', 'iDMAoXEjZLkpofokBGsVwen7YEwo1iujMQ'],
-  weights: [50_000000n, 50_000000n],
-  initialSupply: 1_000_00000000n,
+  weights: [50_000000n, 50_000000n], // relative weights, normalized to sum to 1e8
+  initialSupply: 1_000_00000000n,    // required and positive for a fractional currency
 });
 ```
 
 Amounts are `bigint` satoshis. Reserve currencies and pre-allocation recipients
-are i-addresses. Omitted per-reserve vectors follow the daemon's own defaults
-(`conversions` / `initialContributions` zero-filled to the reserve count;
-`minPreconversion` / `maxPreconversion` left empty).
+are i-addresses. Weights are relative and normalized to sum to `1e8` exactly as
+the daemon does. Omitted per-reserve vectors follow the daemon's own defaults
+(`conversions` zero-filled to the reserve count; `minPreconversion` /
+`maxPreconversion` left empty). `serializeCurrencyDefinition(input)` returns just
+the `CCurrencyDefinition` `AsVector()` bytes without the CC wrapper.
 
-`serializeCurrencyDefinition(input)` returns just the `CCurrencyDefinition`
-`AsVector()` bytes if you want to inspect or diff the payload without the CC
-wrapper.
+### NFTs (tokenized ID control)
 
-## What this is for
+An NFT is a single-satoshi token the daemon maps to the native currency. Set the
+`NFT_TOKEN` bit and pre-allocate exactly one satoshi; the SDK auto-maps the system
+currency, fixes `maxPreconversion` to `[0]`, and rejects a centralized proof
+protocol (the daemon rejects an NFT with `proofProtocol: 2`):
 
-- Building a definition script to hand to a signing/assembly pipeline.
-- Inspecting or verifying a definition — decode a daemon-produced definition and
-  confirm it byte-matches the parameters you expect before you sign or broadcast.
+```ts
+const nftScript = sdk.buildCurrencyDefinitionScript({
+  name: 'MYNFT',
+  parent: 'iJhCezBExJHvtyH3fGhNnt2NhU4Ztkf2yq',
+  options: CURRENCY_OPTION.TOKEN | CURRENCY_OPTION.SINGLECURRENCY | CURRENCY_OPTION.NFT_TOKEN, // 0x860
+  proofProtocol: 1,
+  preAllocations: [{ address: 'iMyIdentityAddress...', amount: 1n }], // the single token
+});
+```
 
-## What this is *not*
+## Launching a currency (full, broadcastable, offline)
 
-**It does not launch a currency.** A valid currency-definition transaction is not
-just the identity spend plus the definition output — it also carries
-currency-state, notarization, and finalization outputs whose contents are checked
-against **live chain state** (`GetCurrencyState(height - 1)`) in the daemon's
-`PrecheckCurrencyDefinition`. Those cannot be produced offline, by this SDK or any
-other. To actually create a currency on-chain, use the daemon's `definecurrency`
-RPC.
+`buildCurrencyLaunchTransaction` assembles and signs the complete
+currency-definition transaction — all seven outputs (identity update, definition,
+cross-chain import, notarization with currency state, cross-chain export, reserve
+deposit, change) — byte-equivalent to `definecurrency`. Hand the signed hex to any
+node to broadcast. A currency is defined under an identity of the same name, so
+you supply that identity (from a lite node's `getidentity`), its controlling UTXO,
+funding UTXOs, the current tip height, and the chain's currency launch fee.
 
-`defineCurrency` (SDK) reflects this: it assembles only the identity spend, the
-currency-definition output, and change — enough to inspect or to feed a larger
-assembly, but **not a broadcastable launch**.
+```ts
+const { signedTx, txid } = sdk.buildCurrencyLaunchTransaction({
+  wif,                                  // the identity's primary key
+  definition: { /* as above */ },
+  identity,                             // getidentity result for the defining ID
+  identityUtxo,                         // its current identity output (value 0)
+  fundingUtxos,                         // cover the reserve deposit + miner fee
+  changeAddress,
+  height,                               // current chain tip
+  launchFeeSats: 20_000_000_000n,       // getcurrency <parent>.currencyregistrationfee
+                                        // (NFTs use idImportFees instead)
+});
+```
+
+Only the change output differs from the daemon's own transaction, and it must:
+the change value depends on which UTXOs fund the transaction, so no builder — nor
+the daemon — produces a byte-identical whole transaction. The six consensus-checked
+outputs (which the daemon validates against chain state) are byte-identical.
+
+To build the seven output scripts without funding/signing (e.g. to inspect or to
+feed a custom assembler), use `buildCurrencyLaunchOutputs`.
+
+## Investing in a launching currency (pre-convert)
+
+`buildReserveTransferOutput` builds the `EVAL_RESERVE_TRANSFER` output that
+converts — or, before a currency's start block, *pre*-converts — a native reserve
+into that currency. Drop it into a funded transaction to invest at launch.
+
+```ts
+import { buildReserveTransferOutput } from '@chainvue/verus-sdk';
+
+const rt = buildReserveTransferOutput({
+  sourceCurrency: 'iJhCezBExJHvtyH3fGhNnt2NhU4Ztkf2yq', // native (VRSCTEST)
+  amount: 10_00000000n,                                 // 10 native
+  destCurrency: 'iLaunchingBasket...',                  // the currency to invest in
+  recipient: 'iMyIdentity...',                          // receives the fractional currency
+  feeAmount: 20_000n,                                   // conversion fee (node estimate)
+  preconvert: true,                                     // before the start block
+});
+// rt.script is the output; rt.value (amount + fee) is its native value.
+```
+
+All addresses must be i-addresses (the destination is encoded as `DEST_ID`; an
+R-address would misroute the funds to a nonexistent identity), so they are
+validated fail-closed.
 
 ## Scope
 
-The builder covers **tokens** (`OPTION_TOKEN`) and **fractional reserve baskets**
-(`OPTION_TOKEN | OPTION_FRACTIONAL`). Gateways (`OPTION_GATEWAY`) and PBaaS chains
-(`OPTION_PBAAS`) are rejected fail-closed — their serialization carries extra
-trailing fields (launch fees, issuance schedule, gateway converter) that this
-builder deliberately does not emit. For those, supply a pre-built script to
-`defineCurrency` via `currencyDefScript`.
+Tokens (`OPTION_TOKEN`), fractional reserve baskets
+(`OPTION_TOKEN | OPTION_FRACTIONAL`), and NFTs (`OPTION_NFT_TOKEN`) are supported.
+Gateways (`OPTION_GATEWAY`) and PBaaS chains (`OPTION_PBAAS`) are rejected
+fail-closed — their serialization carries extra trailing fields this builder does
+not emit. For those, supply a pre-built script to `defineCurrency` via
+`currencyDefScript`.
 
-The field layout is byte-locked in `test/currency-definition.test.ts` against two
-real VRSCTEST definitions (the `TST` token and the `bankroll` 4-reserve basket)
-and was verified equivalent to the live daemon's `definecurrency` output for both
-a token and a basket.
+Every output is byte-locked in the `test/currency-*.test.ts` suites against live
+VRSCTEST `definecurrency` / `sendcurrency` output, and the full pipeline
+(WIF → identity → launch → pre-convert) has been proven end-to-end on VRSCTEST for
+tokens, 1/2/3-reserve baskets, discount, carve-out, min/max preconversion, and
+NFTs.

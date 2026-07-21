@@ -23,7 +23,7 @@
 import BN from 'bn.js';
 import { Identity } from '../fork/boundary.js';
 import { writeCompactSize, iAddressToHash } from '../utils/index.js';
-import { buildIdentityScript } from '../identity/index.js';
+import { buildIdentityScript, deriveIdentityAddress } from '../identity/index.js';
 import { TransactionBuildError } from '../errors.js';
 import {
   CURRENCY_OPTION,
@@ -287,6 +287,17 @@ export function buildCurrencyLaunchOutputs(
   const identityAddress = context.identity.identityaddress;
   if (typeof identityAddress !== 'string' || !identityAddress) {
     throw new TransactionBuildError('context.identity.identityaddress is required');
+  }
+  // The new currency's id is derived from its name + parent, and MUST equal the
+  // defining identity's address — the import/notarization/export/state outputs all
+  // reference it, so a mismatched identity (or a typo'd name/parent) would build
+  // and sign a transaction the daemon rejects with an opaque error. Fail closed.
+  const derivedId = deriveIdentityAddress(def.name, def.parent);
+  if (derivedId !== identityAddress) {
+    throw new TransactionBuildError(
+      `identity mismatch: currency "${def.name}" under ${def.parent} derives ${derivedId}, ` +
+        `but context.identity.identityaddress is ${identityAddress}`,
+    );
   }
   if (!Number.isInteger(context.height) || context.height < 0) {
     throw new TransactionBuildError(`context.height must be a non-negative block height, got ${context.height}`);

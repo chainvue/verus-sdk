@@ -41,11 +41,12 @@ const { signedTx, txid, fee } = sdk.transfer({
   VerusID sell / buy / swap (`build*IdentityOffer` / `complete*IdentityOffer`).
   Native coin, tokens, and identities, in every combination — plus
   `buildReclaimOffer` to cancel an unaccepted offer and reclaim the funds.
-- **Currency definitions** — `buildCurrencyDefinitionScript` serializes a token
-  or fractional-basket definition to its EVAL_CURRENCY_DEFINITION output script
-  offline, byte-equivalent to the daemon. It is a serialization primitive, not a
-  launcher: a full on-chain launch also needs live-state notarization outputs and
-  is a daemon (`definecurrency`) operation.
+- **Currencies** — build and sign a full currency launch offline:
+  `buildCurrencyDefinitionScript` for the definition output (token,
+  fractional basket, or NFT), `buildCurrencyLaunchTransaction` for the complete
+  broadcastable transaction (all seven outputs, byte-equivalent to the daemon's
+  `definecurrency`), and `buildReserveTransferOutput` to pre-convert / invest in
+  a launching currency. See [docs/currency.md](./docs/currency.md).
 - **Helpers** — `VerusSDK.generateWif()`, `deriveAddress(wif)`,
   `deriveIdentityAddress(name, parent?)`, `validateAddress`, `validateWif`;
   `utils.summarizeSignedTransaction(hex)` decodes a signed tx (txid, spent
