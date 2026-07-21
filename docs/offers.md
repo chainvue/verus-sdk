@@ -13,8 +13,8 @@ transaction, the taker's completed swap, and (if you post to the on-chain
 orderbook rather than hand the partial to a taker directly) the offer itself —
 broadcasting, UTXO fetching, and orderbook indexing are yours.
 
-Amounts are `bigint` satoshis (see [amounts](./amounts.md)). Every build takes a
-required `expiryHeight` — see
+Amounts are `bigint` satoshis (see [amounts](./amounts.md)). The offer-building
+steps take a required `expiryHeight` (funding defaults to `0`) — see
 [Transaction expiry](./transfers.md#transaction-expiry-required).
 
 The OFFERED and WANTED assets may each be the native coin, a token, or a VerusID,

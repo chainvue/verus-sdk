@@ -32,7 +32,7 @@ the bundle changes.
 
 `@bitgo/utxo-lib` models output values as float64 internally. The SDK keeps
 every amount a `bigint` and crosses that boundary in exactly one audited place —
-`toSafeNumber(sats)`, which throws outside `[0, 2^53]`. See
+`toSafeNumber(sats)`, which throws outside `[0, 2^53)`. See
 [amounts](./amounts.md).
 
 ## Smart outputs fail closed

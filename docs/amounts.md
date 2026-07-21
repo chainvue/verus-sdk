@@ -42,11 +42,11 @@ float64 internally. Exactly one function crosses a `bigint` into it:
 import { toSafeNumber } from "@chainvue/verus-sdk";
 
 toSafeNumber(90_000_000n);   // 90000000
-toSafeNumber(2n ** 60n);     // throws InvalidAmountError — outside [0, 2^53]
+toSafeNumber(2n ** 60n);     // throws InvalidAmountError — outside [0, 2^53)
 ```
 
-`toSafeNumber` is the single audited boundary: it throws for any amount outside
-`[0, 2^53]` satoshis rather than let a lossy value reach the signer. If you are
+`toSafeNumber` is the single audited boundary: it throws for any amount above
+`Number.MAX_SAFE_INTEGER` (2^53 − 1) rather than let a lossy value reach the signer. If you are
 building on the SDK internals, this is the only place a satoshi value should
 ever become a `number` — never `Number(sats)` or `Math.round(coins * 1e8)`
 anywhere else.

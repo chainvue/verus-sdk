@@ -86,16 +86,22 @@ sdk.updateIdentity({
 
 ## Lock and unlock
 
-Locking an identity disables spending/updates until a height; unlocking starts
-the delay timer back down.
+Locking an identity disables spending and updates. `unlockIdentity` starts the
+unlock, after which the identity stays locked for `unlockDelayBlocks` more blocks.
 
 ```ts
-sdk.lockIdentity({   wif, identityHex, identityUtxo, unlockAfter: 200_000, utxos, changeAddress });
-sdk.unlockIdentity({ wif, identityHex, identityUtxo, utxos, changeAddress });
+sdk.lockIdentity({
+  wif, identityHex, identityUtxo, utxos, changeAddress,
+  expiryHeight: tipHeight + 20,
+  unlockDelayBlocks: 1440, // ~1 day (RELATIVE delay in blocks, NOT a block height)
+});
+sdk.unlockIdentity({ wif, identityHex, identityUtxo, utxos, changeAddress, expiryHeight: tipHeight + 20 });
 ```
 
-`unlockAfter` is the block height (or delay) after which the identity can be
-unlocked.
+**`unlockDelayBlocks` is a relative delay in blocks, not an absolute height.** A
+common, costly mistake is passing a block height (millions) meaning "until block
+X" — that locks the identity for years. ~1 day ≈ 1440 blocks; values above
+~1 year (`LOCK_DELAY_SANITY_BLOCKS`) require an explicit `sanityOverride: true`.
 
 ## Revoke and recover
 

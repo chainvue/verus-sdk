@@ -92,6 +92,13 @@ outputs (which the daemon validates against chain state) are byte-identical.
 To build the seven output scripts without funding/signing (e.g. to inspect or to
 feed a custom assembler), use `buildCurrencyLaunchOutputs`.
 
+> **Fee note.** The launch pays a standard size-based miner fee and locks the
+> import share (half the launch fee, rounded up) in the reserve deposit — the
+> economics a same-chain definition is validated against today. The daemon
+> additionally pays the *export* share (~100 native) as miner fee; this SDK does
+> not, and same-chain consensus does not require it. Accepted on VRSCTEST, but a
+> future consensus tightening could begin to expect it.
+
 ## Investing in a launching currency (pre-convert)
 
 `buildReserveTransferOutput` builds the `EVAL_RESERVE_TRANSFER` output that
@@ -116,6 +123,26 @@ All addresses must be i-addresses (the destination is encoded as `DEST_ID`; an
 R-address would misroute the funds to a nonexistent identity), so they are
 validated fail-closed.
 
+## Constraints the daemon enforces (checked offline, fail-closed)
+
+The builder rejects a definition the network would reject, so you find out before
+you fund and sign, not after broadcast:
+
+- **Fractional baskets** must include the chain's native currency among the
+  reserves, carry one positive weight per reserve (normalized to sum to 1e8), keep
+  every normalized weight ≥ 5%, have a positive `initialSupply`, and use ≤ 10
+  reserves. (Carve-out, discount, and pre-allocation dilute weights further *at
+  launch* — leave headroom above 5%.)
+- **NFTs** pre-allocate exactly one satoshi and use a non-centralized proof
+  protocol; `currencies`/`weights`/`min`·`maxPreconversion` are set automatically.
+- **Tokens** take no `initialSupply`/`preLaunchDiscount` (fractional-only fields).
+- **Same-chain only**: `parent`/`systemId` must be the chain id; the launch's
+  `startBlock` must be in the future; `idReferralLevels ≤ 5`; an identity may
+  define a currency only once.
+
+Amounts that would overflow, go negative, or fall outside the daemon's ranges are
+rejected with a typed `TransactionBuildError`.
+
 ## Scope
 
 Tokens (`OPTION_TOKEN`), fractional reserve baskets
@@ -130,3 +157,15 @@ VRSCTEST `definecurrency` / `sendcurrency` output, and the full pipeline
 (WIF → identity → launch → pre-convert) has been proven end-to-end on VRSCTEST for
 tokens, 1/2/3-reserve baskets, discount, carve-out, min/max preconversion, and
 NFTs.
+
+## Classifying a currency
+
+`classifyCurrency(info)` sorts a `getcurrency` result into a `CurrencyType` —
+`'native' | 'gateway' | 'bridge' | 'liquidity_pool' | 'token' | 'nft'` — handy for
+labelling or ordering currencies in a UI (`CURRENCY_TYPE_ORDER` gives the sort
+priority).
+
+```ts
+import { classifyCurrency } from "@chainvue/verus-sdk";
+classifyCurrency({ systemid, currencyid, options, currencies }); // e.g. "token"
+```
