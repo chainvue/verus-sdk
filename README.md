@@ -1,5 +1,10 @@
 # @chainvue/verus-sdk
 
+[![npm](https://img.shields.io/npm/v/%40chainvue%2Fverus-sdk)](https://www.npmjs.com/package/@chainvue/verus-sdk)
+[![CI](https://github.com/chainvue/verus-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chainvue/verus-sdk/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/%40chainvue%2Fverus-sdk)](./LICENSE)
+[![node](https://img.shields.io/node/v/%40chainvue%2Fverus-sdk)](https://nodejs.org)
+
 Offline Verus transaction signing. Bring UTXOs and a WIF; get back signed
 transaction hex — no daemon, no network. Native transfers, token/currency
 transfers, conversions, currency creation (token / basket / NFT), and the full
