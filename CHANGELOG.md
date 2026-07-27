@@ -1,5 +1,12 @@
 # Changelog
 
+# [0.15.0](https://github.com/chainvue/verus-sdk/compare/v0.14.1...v0.15.0) (2026-07-27)
+
+
+### Features
+
+* **keys:** derive keys from Verus Mobile / Verus Desktop seed phrases ([#88](https://github.com/chainvue/verus-sdk/issues/88)) ([ab755c6](https://github.com/chainvue/verus-sdk/commit/ab755c68821e75da9adbdbb014c1621e615c235a))
+
 ## [0.14.1](https://github.com/chainvue/verus-sdk/compare/v0.14.0...v0.14.1) (2026-07-21)
 
 
