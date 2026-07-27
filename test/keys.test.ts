@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import bs58check from 'bs58check';
+import { createHash as nodeCreateHash } from 'node:crypto';
+import { ECPair, networks } from '@bitgo/utxo-lib';
 import {
   validateWif,
   wifToPrivateKey,
@@ -10,7 +12,11 @@ import {
   generateWif,
   validateAddress,
   hash160,
+  seedToPrivateKey,
+  seedToWif,
+  seedToAddress,
 } from '../src/keys/index.js';
+import { InvalidSeedError } from '../src/errors.js';
 
 // Known test keys from the signer project
 const TEST_WIF_A = 'UusoQWsobQKUkezgBJa22D9G4t9Avo6k8wD5UUxmmfAEoTN8bawc';
@@ -138,5 +144,86 @@ describe('keys', () => {
       const h = hash160(data);
       expect(h.length).toBe(20);
     });
+  });
+});
+
+// ─── Verus Mobile / Verus Desktop seed compatibility ─────────────────────────
+//
+// Reference: agama-wallet-lib `seedToWif(seed, network, iguana)` — Verus Mobile
+// src/utils/agama-wallet-lib/keys.js, called with iguana=true from every call
+// site (deriveElectrumKeypair in V1, and the legacy V0 path). Transcribed here
+// against node's own crypto, then driven through the SAME fork
+// (@bitgo/utxo-lib ECPair) that Verus Mobile itself runs — so if our pure-TS
+// derivation diverges from the wallet's library, these addresses disagree.
+function referenceSeedWif(seed: string): string {
+  const bytes = nodeCreateHash('sha256').update(Buffer.from(seed, 'utf8')).digest();
+  bytes.writeUInt8(bytes.readUInt8(0) & 248, 0); // bytes[0] &= 248
+  bytes.writeUInt8((bytes.readUInt8(31) & 127) | 64, 31); // bytes[31] &= 127; |= 64
+  return bs58check.encode(
+    Buffer.concat([Buffer.from([0xbc]), bytes, Buffer.from([0x01])]),
+  );
+}
+
+const SEEDS = [
+  // A real BIP39 phrase is just a string to this convention — it is hashed
+  // verbatim, NOT run through BIP39/BIP32.
+  'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+  'sample verus seed phrase for testing only do not use',
+  'a', // degenerate but legal — the wallets accept any non-WIF string
+] as const;
+
+describe('Verus Mobile seed compatibility', () => {
+  it('matches the fork ECPair the wallet itself derives with', async () => {
+    for (const seed of SEEDS) {
+      const forkAddress = ECPair.fromWIF(referenceSeedWif(seed), networks.verus).getAddress();
+      expect(await seedToAddress(seed)).toBe(forkAddress);
+      expect(seedToWif(seed)).toBe(referenceSeedWif(seed));
+    }
+  });
+
+  it('holds the derivation constant (locked known-answer vectors)', async () => {
+    // Regression lock: a change to any of these values is a change to which
+    // address a user's existing seed phrase controls.
+    expect(await seedToAddress(SEEDS[0])).toBe('RFHG6jCuPmTZknnwPwjMWv67HRarPCtEFh');
+    expect(await seedToAddress(SEEDS[1])).toBe('RQi75WyyN6naucDBwfKD7TfwpCUPLJSa6v');
+    expect(await seedToAddress(SEEDS[2])).toBe('R9ZMKPDhaiiqiGT7KKD4wXmR9a78ih3qn8');
+  });
+
+  it('applies the iguana clamp', () => {
+    for (const seed of SEEDS) {
+      const key = seedToPrivateKey(seed);
+      expect(key.length).toBe(32);
+      expect(key.readUInt8(0) & 0b0000_0111).toBe(0); // bytes[0] &= 248
+      expect(key.readUInt8(31) & 0b1000_0000).toBe(0); // bytes[31] &= 127
+      expect(key.readUInt8(31) & 0b0100_0000).toBe(0b0100_0000); // bytes[31] |= 64
+    }
+  });
+
+  it('derives a compressed WIF that round-trips through the WIF path', async () => {
+    const wif = seedToWif(SEEDS[1]);
+    expect(validateWif(wif)).toEqual({ valid: true });
+    expect(isCompressedWif(wif)).toBe(true);
+    expect(await wifToAddress(wif)).toBe(await seedToAddress(SEEDS[1]));
+  });
+
+  it('hashes the phrase verbatim — whitespace and case are significant', async () => {
+    const base = await seedToAddress('my seed phrase');
+    expect(await seedToAddress(' my seed phrase')).not.toBe(base);
+    expect(await seedToAddress('My seed phrase')).not.toBe(base);
+    expect(await seedToAddress('my  seed phrase')).not.toBe(base);
+  });
+
+  it('rejects a WIF passed as a seed instead of silently deriving a new key', () => {
+    // The dangerous case: hashing a WIF would produce a valid-looking address
+    // the user does not control the funds of.
+    expect(() => seedToWif(TEST_WIF_A)).toThrow(InvalidSeedError);
+    expect(() => seedToPrivateKey(TEST_WIF_A)).toThrow(/WIF private key/);
+  });
+
+  it('rejects an empty or whitespace-only seed', () => {
+    // Deviation from the wallets, which would hash "" happily: an empty seed
+    // is an unset config value, and its address is one an attacker watches.
+    expect(() => seedToWif('')).toThrow(InvalidSeedError);
+    expect(() => seedToWif('   ')).toThrow(InvalidSeedError);
   });
 });

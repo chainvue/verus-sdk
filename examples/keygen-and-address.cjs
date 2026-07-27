@@ -16,6 +16,13 @@ async function main() {
   console.log("R-address:            ", address);
   console.log("R-address valid:      ", VerusSDK.validateAddress(address).valid);
 
+  // A Verus Mobile / Verus Desktop seed phrase maps to exactly ONE key — Verus
+  // is not HD. Derive it and compare against the address your wallet shows
+  // before trusting the import. See docs/seeds.md.
+  const demoSeed = "sample verus seed phrase for testing only do not use";
+  console.log("seed -> R-address:    ", await VerusSDK.deriveAddressFromSeed(demoSeed));
+  console.log("seed -> WIF valid:    ", VerusSDK.validateWif(VerusSDK.seedToWif(demoSeed)).valid);
+
   // Identity i-addresses are deterministic from the name (+ optional parent),
   // so you can compute one before the identity is registered.
   console.log("i-address for alice@: ", VerusSDK.deriveIdentityAddress("alice"));

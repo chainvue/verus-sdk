@@ -86,6 +86,7 @@ export {
   VerusError,
   InsufficientFundsError,
   InvalidWifError,
+  InvalidSeedError,
   InvalidAddressError,
   InvalidNameError,
   TransactionBuildError,

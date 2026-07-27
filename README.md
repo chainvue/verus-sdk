@@ -85,6 +85,7 @@ Per-area guides, plus runnable offline examples in [`examples/`](./examples):
 
 | Guide | What's in it |
 |---|---|
+| [seed phrases](./docs/seeds.md) | using a Verus Mobile / Verus Desktop seed phrase — the exact derivation, why Verus is not HD, and the security caveat |
 | [amounts](./docs/amounts.md) | the money model — `bigint` satoshis, `parseSats`/`toCoins`, the one float64 boundary |
 | [transfers](./docs/transfers.md) | `transfer` / `transferToken` / `convert` / `sendCurrency`, conversions, pre-convert, mint / burn, UTXOs, change, re-validation |
 | [VerusID lifecycle](./docs/identity.md) | commit → register, update, lock/unlock, revoke/recover, sign/verify messages |
