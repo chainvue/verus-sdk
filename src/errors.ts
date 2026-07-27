@@ -43,6 +43,14 @@ export class InvalidWifError extends VerusError {
   }
 }
 
+/** Thrown when a seed phrase is missing, empty, or is actually a WIF key */
+export class InvalidSeedError extends VerusError {
+  constructor(detail: string) {
+    super('INVALID_SEED', `Invalid seed: ${detail}`);
+    this.name = 'InvalidSeedError';
+  }
+}
+
 /** Thrown when an address fails format validation */
 export class InvalidAddressError extends VerusError {
   readonly address: string;

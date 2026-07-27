@@ -351,6 +351,19 @@ export class VerusSDK {
     return keysModule.generateWif();
   }
 
+  /**
+   * Derive the WIF a Verus Mobile / Verus Desktop seed phrase maps to.
+   * One seed = one key: Verus wallets are not HD. See docs/seeds.md.
+   */
+  static seedToWif(seed: string): string {
+    return keysModule.seedToWif(seed);
+  }
+
+  /** Derive the R-address a Verus Mobile / Verus Desktop seed phrase maps to */
+  static async deriveAddressFromSeed(seed: string): Promise<string> {
+    return keysModule.seedToAddress(seed);
+  }
+
   /** Validate a Verus R-address */
   static validateAddress(address: string): { valid: boolean; error?: string } {
     return keysModule.validateAddress(address);
