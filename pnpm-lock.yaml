@@ -21,7 +21,7 @@ importers:
     dependencies:
       bn.js:
         specifier: ^5.2.2
-        version: 5.2.2
+        version: 5.2.3
       bs58check:
         specifier: ^2.1.2
         version: 2.1.2
@@ -145,7 +145,7 @@ packages:
     resolution: {integrity: sha512-+Neg+nsqUhYOPlvyITHXYzKUTJofyxYdLQTzNjufamifBzxLGTpgn2KKUfvGNsGovlUYzlyPZj+CB6je2D7mhw==}
 
   '@bitgo/utxo-lib@https://codeload.github.com/VerusCoin/BitGoJS/tar.gz/9701df63b479984f27680348f9671c2d40025a90':
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/VerusCoin/BitGoJS/tar.gz/9701df63b479984f27680348f9671c2d40025a90}
+    resolution: {gitHosted: true, integrity: sha512-VO8XwxFNpult6vm27+GTJVAFEnnGuvRKdmXk+I5PDjK/as8fAnC5dUC69P5Iesr+y1OOlxONeBaP2UsaETF5Aw==, tarball: https://codeload.github.com/VerusCoin/BitGoJS/tar.gz/9701df63b479984f27680348f9671c2d40025a90}
     version: 1.9.6
     engines: {node: '>=10.22.0', npm: '>=3.10.10'}
 
@@ -1021,21 +1021,21 @@ packages:
     resolution: {integrity: sha512-dBoAPJYg6HaaQeJGr4cNiqat1meGzlrv2qX+EJcW5q0zEdryMSLKlQKdTaCtDnrzEUPkwmlYqsD7ANaye4BEfg==}
 
   bitcoin-ops@https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd:
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd}
+    resolution: {gitHosted: true, integrity: sha512-+3LLV17SuOeTYf0ENXqE/O/9/5e10badygAMVCTKrkAwUDHVb9wGz+b7lTi3ORluN0MgzfHwt8Y26xOz9AoG8g==, tarball: https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd}
     version: 1.4.1
 
   blake2b-wasm@2.4.0:
     resolution: {integrity: sha512-S1kwmW2ZhZFFFOghcx73+ZajEfKBqhP82JMssxtLVMxlaPea1p9uoLiUZ5WYyHn0KddwbLc+0vh4wR0KBNoT5w==}
 
   blake2b@https://codeload.github.com/VerusCoin/blake2b/tar.gz/578dc12b7b68a3ce76d1e1add1402b28a5890a6b:
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/VerusCoin/blake2b/tar.gz/578dc12b7b68a3ce76d1e1add1402b28a5890a6b}
+    resolution: {gitHosted: true, integrity: sha512-GEeL7g7d9GL3IQLvW48tQDB6tab1oLevNYhKrVRmM9IMRhHTC3E42IqX0oiFu8GOfqZ16YERHCOmCR95QFKHfQ==, tarball: https://codeload.github.com/VerusCoin/blake2b/tar.gz/578dc12b7b68a3ce76d1e1add1402b28a5890a6b}
     version: 2.1.4
 
   bn.js@5.2.1:
     resolution: {integrity: sha512-eXRvHzWyYPBuB4NBy0cmYQjGitUrtqwbvlzP3G6VFnNRbsZQIxQ10PbKKHt8gZ/HW/D/747aDl+QkDqg3KQLMQ==}
 
-  bn.js@5.2.2:
-    resolution: {integrity: sha512-v2YAxEmKaBLahNwE1mjp4WON6huMNeuDvagFZW+ASCuA/ku0bXR9hSMw0XpiqMoA3+rmnyck/tPRSFQkoC9Cuw==}
+  bn.js@5.2.3:
+    resolution: {integrity: sha512-EAcmnPkxpntVL+DS7bO1zhcZNvCkxqtkd0ZY53h06GNQ3DEkkGZ/gKgmDv6DdZQGj9BgfSPKtJJ7Dp1GPP8f7w==}
 
   bottleneck@2.19.5:
     resolution: {integrity: sha512-VHiNCbI1lKdl44tGrhNfU3lup0Tj/ZBMJB5/2ZbNXRCPuRCO7ed2mgcK4r17y+KB2EfuYuRaVlwNbAeaWGSpbw==}
@@ -2730,7 +2730,7 @@ packages:
     resolution: {integrity: sha512-2nW4pVicYWxOMY1u+3T3eFXw24wbFlKz+ug7hd02rozYmeFVBoC6LB7/P4E46jN9aD1ezhX01g2Uh4zrZ+9RWw==}
 
   verus-typescript-primitives@https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e:
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e}
+    resolution: {gitHosted: true, integrity: sha512-w9V6auMpHEWKOuPrqYZ5hfVOn4QND/3k2Qco8gQMV4opBnJFCXTQULEmiFYvYerbgRIXTXoMLBT26U7MkCI5fQ==, tarball: https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e}
     version: 1.0.0
 
   vite@8.1.4:
@@ -3755,7 +3755,7 @@ snapshots:
 
   bn.js@5.2.1: {}
 
-  bn.js@5.2.2: {}
+  bn.js@5.2.3: {}
 
   bottleneck@2.19.5: {}
 
