@@ -116,9 +116,6 @@ export function defineCurrency(
       { script: currencyDefScript, nativeSat: currencyDefValue },
     ],
     changeAddress: params.changeAddress,
-    // The identity + currency-definition outputs can be large; size the fee from
-    // their real byte length so the tx isn't estimated below the relay minimum.
-    extraOutputBytes: identityOutputScript.length + currencyDefScript.length,
     label: 'currency definition',
   });
 

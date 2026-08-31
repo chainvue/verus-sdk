@@ -892,9 +892,6 @@ function _buildVrscRegistration(
       { script: reservationScript, nativeSat: 0n },
     ],
     changeAddress: params.changeAddress,
-    // Legacy fee estimate: identity + referrals + reservation, plus the one extra
-    // change slot the original path counted on top of selectUtxos' own reserve.
-    feeOutputCount: 2 + referralOutputs.length + 1,
     fee: {
       policy: 'declared',
       burnSat: registrationOutlay - totalReferralPayments,
@@ -970,11 +967,8 @@ function _buildSubIdRegistration(
   }
   const nativeImportFee = params.nativeImportFee;
 
-  // The identity + reservation outputs carry 0 native but embed the full
-  // serialized identity / advanced name reservation (a large contentMultimap
-  // makes them multi-KB), so the fee is sized from their real bytes — matching
-  // the VRSC/update/define paths — instead of the fixed smart-output estimate.
-  // The fee output carries the parent-currency registration fee (a reserve output
+  // The identity + reservation outputs carry 0 native, and the fee output
+  // carries the parent-currency registration fee (a reserve output
   // for pp2, a reserve transfer for pp1); the parent's idimportfees leaves as a
   // DECLARED native burn. Verified live on VRSCTEST: a sub-ID under `ownora`
   // (1.0 token fee) paid 0.02 native.
@@ -991,10 +985,6 @@ function _buildSubIdRegistration(
       { script: reservationScript, nativeSat: 0n },
     ],
     changeAddress: params.changeAddress,
-    // Legacy fee estimate: identity + fee + reservation, plus the one extra change
-    // slot the original path counted on top of selectUtxos' own reserve.
-    feeOutputCount: 4,
-    extraOutputBytes: identityScript.length + reservationScript.length + feeOutput.script.length,
     fee: {
       policy: 'declared',
       burnSat: nativeImportFee,
@@ -1240,10 +1230,6 @@ export function buildAndSignIdentityUpdate(
     identityUtxo: params.identityUtxo,
     outputs: unfundedTx.outs.map((o) => ({ script: o.script, nativeSat: BigInt(o.value) })),
     changeAddress: params.changeAddress,
-    // The identity output embeds the full serialized identity (a large
-    // contentMultimap can make it multi-KB); size the fee from the unfunded tx's
-    // real bytes so a big update isn't fee-estimated below the relay minimum.
-    extraOutputBytes: unfundedHex.length / 2,
     label: `identity ${operation}`,
   });
 

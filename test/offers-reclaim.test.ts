@@ -13,7 +13,8 @@ import { buildCommitmentScript, buildTokenCommitmentScript, buildTokenChangeOutp
 import { parseRAddress, parseAddress } from '../src/core/brands.js';
 import { Transaction, script as bscript } from '../src/fork/boundary.js';
 import { getNetwork } from '../src/signing/index.js';
-import { estimateFee } from '../src/utxo/index.js';
+import { estimateMinerFee } from '../src/fee/index.js';
+import { addressToScriptPubKey } from '../src/utils/index.js';
 import {
   TEST_WIF,
   TEST_ADDRESS,
@@ -66,7 +67,10 @@ describe('buildReclaimOffer — native', () => {
     // in[0] = the commitment, signed SIGHASH_ALL as a CC.
     expect(fulfillmentPrefix(tx, 0)).toBe('0101');
     // out[0] = native back to the maker, minus the fee.
-    const fee = estimateFee(1, 1, 10_000n, false, 100);
+    // WAS: estimateFee(1, 1, 10_000n, false, 100) — the 100 extra bytes were
+    // inert (the 10000-sat floor dominated), and the value is unchanged: one
+    // declared output costs exactly one DEFAULT_TRANSACTION_FEE.
+    const fee = estimateMinerFee([addressToScriptPubKey(TEST_ADDRESS)]);
     expect(tx.outs[0]!.value).toBe(Number(offered - fee));
   });
 

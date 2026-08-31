@@ -212,10 +212,6 @@ export function sendCurrency(
 
   const unfundedTx = Transaction.fromHex(unfundedTxHex, verusNetwork);
 
-  const hasSmartOutputs = params.outputs.some(
-    (o) => o.convertTo || o.exportTo || o.via || o.mintnew || o.burn || o.burnweight || o.currency !== systemId
-  );
-
   const requiredCurrencies = new Map<string, bigint>();
   for (const out of params.outputs) {
     // A `mintnew` output CREATES new supply of a centralized currency; it is not
@@ -252,7 +248,6 @@ export function sendCurrency(
     funding: params.utxos,
     outputs: unfundedTx.outs.map((o) => ({ script: o.script, nativeSat: BigInt(o.value) })),
     changeAddress: params.changeAddress,
-    hasSmartOutputs,
     requiredCurrencies,
     changeStrategy: 'separate',
     fee: { policy: 'estimate' },

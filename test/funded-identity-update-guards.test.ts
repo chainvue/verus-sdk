@@ -38,7 +38,6 @@ function intentWith(identityUtxo: { txid: string; outputIndex: number; satoshis:
     identityUtxo,
     outputs: [{ script: identityScript, nativeSat: 0n }],
     changeAddress: TEST_ADDRESS,
-    extraOutputBytes: identityScript.length,
     label: 'test-identity-guard',
   };
 }

@@ -24,5 +24,6 @@ or a link step — the one line that differs from consumer code.
 | `amounts.cjs` | `parseSats` / `toCoins` / `toSafeNumber` — the money edge |
 | `keygen-and-address.cjs` | `generateWif`, `deriveAddress`, `deriveIdentityAddress`, `validate*` |
 | `transfer.cjs` | build + sign a native transfer offline, then decode it back |
+| `multi-recipient-send.cjs` | a 3-recipient `sendCurrency`, and why its fee is 30,000 sat |
 | `sign-verify-message.cjs` | VerusID message sign → verify roundtrip |
 | `create-currency.cjs` | build token / fractional-basket / NFT definition scripts offline |

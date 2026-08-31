@@ -8,13 +8,15 @@
  * conservation on the assembled transaction BY CONSTRUCTION. A path can no
  * longer forget a conservation assert, drop token change, or hand-roll a
  * change-emission block that drifts from the others — those were whole classes
- * of bug. Fees are either estimated (selectUtxos) or DECLARED with an intent
- * (registration's implicit burn); an unnamed implicit fee is unrepresentable.
+ * of bug. The miner fee is priced from the declared outputs by the daemon's own
+ * rule (src/fee/index.ts); a registration's implicit burn must instead be DECLARED
+ * on the intent, so an unnamed implicit fee is unrepresentable.
  *
  * Ported flows must stay byte-identical to the Phase-0 golden snapshots.
  */
 import { TransactionBuilder } from '../fork/boundary.js';
 import { selectUtxos, assertTokenConservation, decodeUtxo } from '../utxo/index.js';
+import { estimateMinerFee, assertFeeMeetsRelayMinimum } from '../fee/index.js';
 import { signTransactionSmart, resolveExpiryHeight, assertNativeConservation, getNetwork } from '../signing/index.js';
 import { toSafeNumber } from '../utils/index.js';
 import { NETWORK_CONFIG, VERSION_GROUP_ID } from '../constants/index.js';
@@ -47,13 +49,6 @@ export interface TxIntent {
   /** Declared outputs, emitted in order before change. */
   outputs: IntentOutput[];
   changeAddress: string;
-  /** Whether the outputs are CryptoCondition (smart) outputs — drives fee sizing. */
-  hasSmartOutputs?: boolean;
-  /** Extra bytes for fee sizing when a pre-built output dwarfs the fixed estimate. */
-  extraOutputBytes?: number;
-  /** Output count fed to the fee estimator; defaults to the declared outputs.
-   *  Override only to reproduce a legacy per-path estimate byte-for-byte. */
-  feeOutputCount?: number;
   /** Token funding requirement, when the outputs are pre-built by the fork
    *  (createUnfundedCurrencyTransfer) and their carried token value can't be read
    *  back off the opaque scripts. When set, it REPLACES the per-output `carries`
@@ -64,7 +59,8 @@ export interface TxIntent {
    *  emits the token change with only its structural native value plus a distinct
    *  native-change output (the fork's currency-transfer convention). */
   changeStrategy?: 'bundled' | 'separate';
-  /** `estimate` sizes the fee from the tx. `declared` names an intentional
+  /** `estimate` prices the miner fee from the declared outputs by the daemon's
+   *  own per-output rule (src/fee/index.ts). `declared` names an intentional
    *  implicit burn — native that leaves BEYOND the outputs and the miner fee
    *  (e.g. the registration fee): it is added to the funding requirement and
    *  bounds the signing-time fee-rate cap, so it can never be an accident. */
@@ -138,15 +134,17 @@ export function assembleAndSign(intent: TxIntent): AssembledTx {
     }
   }
 
+  // The miner fee is priced from the DECLARED outputs alone — the daemon charges
+  // per output, not per byte or per input (src/fee/index.ts). Change is excluded,
+  // exactly as the daemon's own builder excludes it (wallet.cpp:6955-6965).
+  const minerFee = estimateMinerFee(intent.outputs.map((o) => o.script));
+
   const selection = selectUtxos(
     intent.funding,
     requiredNative,
     requiredCurrencies,
-    intent.feeOutputCount ?? intent.outputs.length,
+    minerFee,
     systemId,
-    undefined,
-    intent.hasSmartOutputs ?? true,
-    intent.extraOutputBytes ?? 0,
   );
 
   const txb = new TransactionBuilder(verusNetwork);
@@ -218,6 +216,10 @@ export function assembleAndSign(intent: TxIntent): AssembledTx {
   const leadingNative = leading.reduce((sum, u) => sum + u.satoshis, 0n);
   const expectedFee = selection.fee + burnSat + leadingNative;
   assertNativeConservation(allUtxos, unsignedTx.outs, expectedFee, intent.label);
+  // And the fee we chose must clear the daemon's own acceptance floor for the
+  // transaction we actually built — change outputs included, since only now are
+  // they known. Asserted on the miner fee alone (a declared burn is on top).
+  assertFeeMeetsRelayMinimum(selection.fee, unsignedTx.outs.map((o) => o.script), intent.label);
 
   // A declared burn tells the fork's absurd-fee-rate cap the intended absolute
   // fee, or build() rejects the (legitimately large) registration burn.

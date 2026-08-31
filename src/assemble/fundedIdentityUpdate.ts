@@ -21,6 +21,7 @@
  */
 import { TransactionBuilder, Transaction, smarttxs } from '../fork/boundary.js';
 import { selectUtxos, assertTokenConservation, decodeUtxo } from '../utxo/index.js';
+import { estimateMinerFee, assertFeeMeetsRelayMinimum } from '../fee/index.js';
 import { signTransactionSmart, resolveExpiryHeight, assertNativeConservation, getNetwork } from '../signing/index.js';
 import { toSafeNumber } from '../utils/index.js';
 import { NETWORK_CONFIG, VERSION_GROUP_ID } from '../constants/index.js';
@@ -50,9 +51,6 @@ export interface FundedIdentityUpdateIntent {
    *  definition), emitted before change. Native funding is derived from them. */
   outputs: FundedUpdateOutput[];
   changeAddress: string;
-  /** Extra output bytes for fee sizing — the identity/definition scripts are
-   *  large, so the caller passes their real byte length. */
-  extraOutputBytes: number;
   /** Label used in conservation error messages. */
   label: string;
 }
@@ -74,16 +72,12 @@ export function assembleFundedIdentityUpdate(
 
   const requiredNative = intent.outputs.reduce((sum, o) => sum + o.nativeSat, 0n);
 
-  const selection = selectUtxos(
-    intent.funding,
-    requiredNative,
-    new Map(),
-    intent.outputs.length,
-    systemId,
-    undefined,
-    true,
-    intent.extraOutputBytes,
-  );
+  // Priced from the declared outputs by the daemon's rule — including the
+  // identity output's own identityFeeFactor, which is what a large contentMultiMap
+  // actually costs (src/fee/index.ts).
+  const minerFee = estimateMinerFee(intent.outputs.map((o) => o.script));
+
+  const selection = selectUtxos(intent.funding, requiredNative, new Map(), minerFee, systemId);
 
   // These paths emit no token-change output, so a token-bearing funding UTXO
   // would be silently dropped; fail closed if one entered (both maps empty ⇒
@@ -166,14 +160,12 @@ export function assembleFundedIdentityUpdate(
   );
 
   const allUtxos: Utxo[] = [...selection.selected, idUtxo];
+  const completedOuts = Transaction.fromHex(completedHex, verusNetwork).outs;
   // The identity input and its recreated output are both value 0, so the
   // assembled native fee must equal selection.fee. Fail loudly on any slip.
-  assertNativeConservation(
-    allUtxos,
-    Transaction.fromHex(completedHex, verusNetwork).outs,
-    selection.fee,
-    intent.label,
-  );
+  assertNativeConservation(allUtxos, completedOuts, selection.fee, intent.label);
+  // …and that fee must clear the daemon's acceptance floor for the final vout set.
+  assertFeeMeetsRelayMinimum(selection.fee, completedOuts.map((o) => o.script), intent.label);
 
   const { signedTx, txid } = signTransactionSmart(completedHex, intent.wif, allUtxos, verusNetwork);
 

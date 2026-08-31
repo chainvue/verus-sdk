@@ -28,8 +28,14 @@ export const VERSION_GROUP_ID = 0x892f2085;
 /** Default transaction version */
 export const TX_VERSION = 4;
 
-/** Default fee per KB in satoshis (0.0001 VRSC) */
-export const DEFAULT_FEE_PER_KB = 10_000n;
+/**
+ * The daemon's standard transaction fee unit: 10000 sat = 0.0001 VRSC. A
+ * CONSTANT, not a rate — VerusCoin charges it once per output, never per byte
+ * (wallet.h:51 `static const CAmount DEFAULT_TRANSACTION_FEE = 0.0001 * COIN;`
+ * with COIN = 100000000, amount.h:16). See `src/fee/index.ts` for the rule it
+ * feeds.
+ */
+export const DEFAULT_TRANSACTION_FEE = 10_000n;
 
 /** Minimum output value (dust threshold) */
 export const DUST_THRESHOLD = 546n;

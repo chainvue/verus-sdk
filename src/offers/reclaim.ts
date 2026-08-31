@@ -19,14 +19,15 @@
  *             by `wif`) fund the miner fee; the token returns in full.
  */
 import { Transaction, TransactionBuilder, ECPair } from '../fork/boundary.js';
-import { selectUtxos, estimateFee } from '../utxo/index.js';
+import { selectUtxos } from '../utxo/index.js';
+import { estimateMinerFee, assertFeeMeetsRelayMinimum } from '../fee/index.js';
 import { getNetwork, assertNativeConservation, resolveExpiryHeight } from '../signing/index.js';
 import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { signTakerInputs, type TakerInput } from './sign.js';
 import type { FundedOutpoint } from './maker.js';
 import { toSafeNumber, addressToScriptPubKey } from '../utils/index.js';
 import { parseAddress, parseIAddress } from '../core/brands.js';
-import { NETWORK_CONFIG, VERSION_GROUP_ID, DEFAULT_FEE_PER_KB, DUST_THRESHOLD } from '../constants/index.js';
+import { NETWORK_CONFIG, VERSION_GROUP_ID, DUST_THRESHOLD } from '../constants/index.js';
 import { TransactionBuildError } from '../errors.js';
 import type { Network } from '../constants/index.js';
 import type { Utxo } from '../types/index.js';
@@ -97,21 +98,25 @@ export function buildReclaimOffer(params: ReclaimOfferParams, network: Network):
   );
 
   if (offeringNative) {
-    // The fee comes out of the reclaimed native value; one CC input, one output.
-    const fee = estimateFee(1, 1, DEFAULT_FEE_PER_KB, false, 100);
+    // The fee comes out of the reclaimed native value; one output, so one
+    // DEFAULT_TRANSACTION_FEE. (The old estimate passed 100 extra bytes here,
+    // which the 10000-sat floor swallowed — it was always exactly 10000 too.)
+    const payScript = nativePaymentScript(params.makerAddress);
+    const fee = estimateMinerFee([payScript]);
     const outAmount = params.offered.amount - fee;
     if (outAmount <= DUST_THRESHOLD) {
       throw new TransactionBuildError(
         `buildReclaimOffer: reclaimed native value ${params.offered.amount} is too small to cover the fee ${fee} above dust`,
       );
     }
-    txb.addOutput(nativePaymentScript(params.makerAddress), toSafeNumber(outAmount));
+    txb.addOutput(payScript, toSafeNumber(outAmount));
 
     const tx = Transaction.fromHex(txb.buildIncomplete().toHex(), verusNetwork);
     const takerInputs: TakerInput[] = [
       { index: 0, prevOutScript: commitmentScript, value: params.commitment.value },
     ];
     assertNativeConservation([{ satoshis: params.commitment.value }], tx.outs, fee, 'reclaimOffer');
+    assertFeeMeetsRelayMinimum(fee, tx.outs.map((o) => o.script), 'reclaimOffer');
     const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
     return { reclaimTx: signedTx, txid };
   }
@@ -137,8 +142,10 @@ export function buildReclaimOffer(params: ReclaimOfferParams, network: Network):
     { index: 0, prevOutScript: commitmentScript, value: 0n },
   ];
 
-  // Select native-only fee UTXOs (numOutputs = token out + native change).
-  const selection = selectUtxos(feeUtxos, 0n, new Map(), 2, systemId, undefined, true, 200);
+  // Select native-only fee UTXOs. The token output is the only declared output;
+  // native change is priced by the daemon as change, i.e. free.
+  const minerFee = estimateMinerFee([tokenOut.script]);
+  const selection = selectUtxos(feeUtxos, 0n, new Map(), minerFee, systemId);
   if (selection.currencyChanges.size > 0) {
     throw new TransactionBuildError(
       'buildReclaimOffer: feeUtxos must carry only the native coin; a token-bearing UTXO was selected and its reserve value would be lost.',
@@ -166,6 +173,7 @@ export function buildReclaimOffer(params: ReclaimOfferParams, network: Network):
 
   const feeNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
   assertNativeConservation([{ satoshis: feeNativeIn }], tx.outs, selection.fee, 'reclaimOffer');
+  assertFeeMeetsRelayMinimum(selection.fee, tx.outs.map((o) => o.script), 'reclaimOffer');
 
   const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
   return { reclaimTx: signedTx, txid };

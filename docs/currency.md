@@ -92,7 +92,8 @@ outputs (which the daemon validates against chain state) are byte-identical.
 To build the seven output scripts without funding/signing (e.g. to inspect or to
 feed a custom assembler), use `buildCurrencyLaunchOutputs`.
 
-> **Fee note.** The launch pays a standard size-based miner fee and locks the
+> **Fee note.** The launch pays the daemon's standard per-output miner fee (see
+> [fees](./fees.md) — six consensus outputs, so 60,000 sat) and locks the
 > import share (half the launch fee, rounded up) in the reserve deposit — the
 > economics a same-chain definition is validated against today. The daemon
 > additionally pays the *export* share (~100 native) as miner fee; this SDK does

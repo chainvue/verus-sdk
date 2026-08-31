@@ -28,6 +28,7 @@
  */
 import { Transaction, TransactionBuilder, Identity, ECPair, type VerusCLIVerusIDJson } from '../fork/boundary.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
+import { estimateMinerFee, assertFeeMeetsRelayMinimum } from '../fee/index.js';
 import { getNetwork, assertNativeConservation, resolveExpiryHeight } from '../signing/index.js';
 import { buildIdentityScript, buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { signOfferInput, signTakerInputs, type TakerInput } from './sign.js';
@@ -89,11 +90,14 @@ function fundFeeAndSignIdentityTaker(args: {
   wif: string;
   network: Network;
   label: string;
-  extraOutputBytes: number;
 }): { swapTx: string; txid: string } {
   const systemId = NETWORK_CONFIG[args.network].chainId;
   const verusNetwork = getNetwork(args.network === 'testnet');
-  const selection = selectUtxos(args.takerUtxos, 0n, new Map(), 3, systemId, undefined, true, args.extraOutputBytes);
+  // Every non-change output of the completed swap is already on `args.tx` (the
+  // maker's output 0 plus the one this completion added), so the daemon's
+  // per-output fee — identity factors included — is exactly computable here.
+  const minerFee = estimateMinerFee(args.tx.outs.map((o) => o.script));
+  const selection = selectUtxos(args.takerUtxos, 0n, new Map(), minerFee, systemId);
 
   // Fee UTXOs must carry only the native coin: no reserve change output is built
   // here, so a selected token-bearing UTXO would lose its reserve value.
@@ -135,6 +139,7 @@ function fundFeeAndSignIdentityTaker(args: {
     selection.fee,
     args.label,
   );
+  assertFeeMeetsRelayMinimum(selection.fee, args.tx.outs.map((o) => o.script), args.label);
 
   const { signedTx, txid } = signTakerInputs(args.tx.toHex(), takerInputs, args.wif, args.network);
   return { swapTx: signedTx, txid };
@@ -226,16 +231,10 @@ export function completeSellIdentityOffer(
     ? new Map<string, bigint>()
     : new Map([[params.want.currency, params.want.amount]]);
   const requiredNative = wantingNative ? params.want.amount : 0n;
-  const selection = selectUtxos(
-    params.takerUtxos,
-    requiredNative,
-    wantedTokenReq,
-    3,
-    systemId,
-    undefined,
-    true,
-    150,
-  );
+  // Both non-change outputs (the maker's wanted output 0 and the transferred
+  // identity added above) are on `tx` already, so the fee is exact.
+  const minerFee = estimateMinerFee(tx.outs.map((o) => o.script));
+  const selection = selectUtxos(params.takerUtxos, requiredNative, wantedTokenReq, minerFee, systemId);
 
   const takerInputs: TakerInput[] = [];
   for (const u of selection.selected) {
@@ -261,6 +260,7 @@ export function completeSellIdentityOffer(
   // native inputs must equal the wanted-native output (if any) + change + fee.
   const takerNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
   assertNativeConservation([{ satoshis: takerNativeIn }], tx.outs, selection.fee, 'takeSellIdentityOffer');
+  assertFeeMeetsRelayMinimum(selection.fee, tx.outs.map((o) => o.script), 'takeSellIdentityOffer');
 
   const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
   return { swapTx: signedTx, txid };
@@ -402,7 +402,6 @@ export function completeBuyIdentityOffer(
     wif: params.wif,
     network,
     label: 'takeBuyIdentityOffer',
-    extraOutputBytes: 300,
   });
 }
 
@@ -513,8 +512,8 @@ export function completeSwapIdentityOffer(
   ];
 
   // The taker funds only the miner fee (native): both identity inputs carry 0
-  // native. Two identity outputs + the maker input are already present but
-  // invisible to selectUtxos, so a generous byte allowance covers their fee.
+  // native. Both identity outputs are already on `tx`, so the fee helper prices
+  // them (and their identityFeeFactors) directly.
   return fundFeeAndSignIdentityTaker({
     tx,
     priorInputs: takerInputs,
@@ -524,6 +523,5 @@ export function completeSwapIdentityOffer(
     wif: params.wif,
     network,
     label: 'takeSwapIdentityOffer',
-    extraOutputBytes: 500,
   });
 }

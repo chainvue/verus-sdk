@@ -111,8 +111,6 @@ export function buildCurrencyLaunchTransaction(
     script: Buffer.from(o.script, 'hex'),
     nativeSat: o.value,
   }));
-  const extraOutputBytes = consensusOutputs.reduce((sum, o) => sum + o.script.length, 0);
-
   const assembled = assembleFundedIdentityUpdate({
     network,
     wif: params.wif,
@@ -124,7 +122,6 @@ export function buildCurrencyLaunchTransaction(
     identityUtxo: params.identityUtxo,
     outputs: consensusOutputs,
     changeAddress: params.changeAddress ?? identityAddress,
-    extraOutputBytes,
     label: 'currency launch',
   });
 
