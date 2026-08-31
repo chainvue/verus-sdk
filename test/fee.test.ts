@@ -161,6 +161,28 @@ describe('computeIdentityFeeFactor — content costs 10_000 per 128 serialized b
     const b = identityWithContent('feesumB', 1641).script; // 14
     expect(computeIdentityFeeFactor([a, b])).toBe(27);
   });
+
+  it('suppresses the large-script surcharge for a LONE identity output', () => {
+    // `if (!(identityFeeFactor && tOutputs.size() <= (1 + idExtraLimit)))`
+    // (pbaasrpc.cpp:10782, reserves.cpp:7951): an identity factor already prices
+    // its own oversized output, so the >2000-byte surcharge is not charged twice.
+    // Confirmed on VRSC — two identity updates whose identity script ran 2072 and
+    // 2071 bytes, both over the threshold and both factor 14, paid exactly
+    // 140,000, not the 150,000 an unsuppressed surcharge would require:
+    //   99e341d67518e096058dfe13eea0be7a6244f339816b46d8330490115cc4d94c (h 4,163,324)
+    //   d68d9f6c992d262fe47dc3f54b599cf2a92372442603840b722a2222992f6317 (h 4,162,364)
+    // The scriptOfLength() boundary fixtures above cannot reach this branch:
+    // a synthetic script has no identity, so its factor is 0.
+    const { script } = identityWithContent('feesuppress', 1800);
+    expect(script.length).toBeGreaterThan(LARGE_SCRIPT_FEE_THRESHOLD);
+    const factor = BigInt(computeIdentityFeeFactor([script]));
+    expect(estimateMinerFee([script])).toBe(factor * DEFAULT_TRANSACTION_FEE);
+    expect(relayMinimumFee([script])).toBe(factor * DEFAULT_TRANSACTION_FEE);
+
+    // The suppression is conditional on the identity being the only declared
+    // output. Add a second and the surcharge applies again.
+    expect(estimateMinerFee([script, P2PKH])).toBe(factor * DEFAULT_TRANSACTION_FEE + 2n * DEFAULT_TRANSACTION_FEE);
+  });
 });
 
 // ─── the mempool floor ───────────────────────────────────
