@@ -62,6 +62,15 @@ export type { CurrencyLaunchTxParams, CurrencyLaunchTxResult } from './currency/
 export { buildReserveTransferOutput } from './currency/reserveTransfer.js';
 export type { ReserveTransferParams, ReserveTransferBuildResult } from './currency/reserveTransfer.js';
 
+// The daemon's miner-fee rule (also available via the fee namespace)
+export {
+  estimateMinerFee,
+  relayMinimumFee,
+  assertFeeMeetsRelayMinimum,
+  computeIdentityFeeFactor,
+  LARGE_SCRIPT_FEE_THRESHOLD,
+} from './fee/index.js';
+
 // Address utilities (also available via address namespace)
 export {
   BASE58_RE,
@@ -99,7 +108,7 @@ export {
   VERSION_GROUP_ID,
   CONSENSUS_BRANCH_ID,
   TX_VERSION,
-  DEFAULT_FEE_PER_KB,
+  DEFAULT_TRANSACTION_FEE,
   DUST_THRESHOLD,
   DEFAULT_REGISTRATION_FEE,
   DEFAULT_REFERRAL_LEVELS,
@@ -143,6 +152,7 @@ export * as address from './address/index.js';
 export * as keys from './keys/index.js';
 export * as signing from './signing/index.js';
 export * as utxo from './utxo/index.js';
+export * as fee from './fee/index.js';
 // Curated public subset (see identity/public.ts); the full module is internal.
 export * as identity from './identity/public.js';
 export * as transfer from './transfer/index.js';

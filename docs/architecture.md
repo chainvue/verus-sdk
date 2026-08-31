@@ -75,7 +75,7 @@ so the **public API is unchanged** by this.
 ## The assemblers (classes 2 + 3: conservation + duplication)
 
 Seven transaction-building paths each used to hand-roll input adding, output
-counting, `extraOutputBytes`, change emission, and value-conservation asserts. A
+counting, fee sizing, change emission, and value-conservation asserts. A
 fix to one drifted from the others — many bugs were literally the same bug copied
 N times — and a CRITICAL token burn shipped because two paths forgot the token
 side of conservation. Conservation-by-convention doesn't scale.
@@ -101,12 +101,16 @@ Consequences that were bug classes:
   reason }`. The burn is funded, bounds the fork's fee-rate cap, and can't be an
   accident. The alternative is `fee: { policy: 'estimate' }`.
 
-Knobs exist only to reproduce a flow's exact legacy bytes: `leadingInputs` (e.g.
-the commitment UTXO spent as input 0), `feeOutputCount` (a legacy fee-estimate
-output count), `requiredCurrencies` (when the fork builds the opaque output
-scripts, as `sendCurrency` does, and their carried token value can't be read
-back), and `changeStrategy` (`bundled` reserve-output change vs the currency
-transfer's `separate` token + native outputs).
+- **The fee is not a knob.** It is derived from the declared outputs by the
+  daemon's own rule (see [fees](./fees.md)) and re-checked against the daemon's
+  acceptance floor once change is known — a path cannot opt into a different
+  number.
+
+Knobs exist only to reproduce a flow's exact bytes: `leadingInputs` (e.g. the
+commitment UTXO spent as input 0), `requiredCurrencies` (when the fork builds the
+opaque output scripts, as `sendCurrency` does, and their carried token value
+can't be read back), and `changeStrategy` (`bundled` reserve-output change vs the
+currency transfer's `separate` token + native outputs).
 
 ### `assemble/fundedIdentityUpdate.ts` — identity respends
 
@@ -131,6 +135,7 @@ assembler would add nothing, so it is left as-is.
 | R-address where an i-address is required (and vice versa) | **Unrepresentable** — brands (compile time) |
 | Unbalanced / dropped-token / missing-change transaction | **Unrepresentable** — the assembler owns outputs + change |
 | Implicit fee burn | **Unrepresentable** — must be a named `declared` fee |
+| A fee below the daemon's relay minimum | **Checked** — `assertFeeMeetsRelayMinimum` on the final vout set |
 | Money routed through float64 | **Contained** — one `toSafeNumber` crossing in the fork boundary |
 | Raw fork import outside the boundary | **Prevented** — ESLint `no-restricted-imports` |
 | WIF not a primary of the identity | **Checked** — `assertWifIsPrimary` (needs identity data) |

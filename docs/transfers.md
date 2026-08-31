@@ -27,6 +27,12 @@ interface Utxo {
 The SDK selects inputs, computes the fee, and returns change to your
 `changeAddress`. It does **not** fetch UTXOs — that is the daemon's job.
 
+The fee is the daemon's own rule: **10,000 satoshis per non-change output**, so a
+one-recipient send costs 10,000 and a three-recipient `sendCurrency` costs
+30,000. Transaction size and input count cost nothing. Quote it before you build
+with `estimateMinerFee(outputScripts)`; the full rule is in
+[fees](./fees.md).
+
 ## Transaction expiry (required)
 
 Every build takes an `expiryHeight` — the block height past which the daemon

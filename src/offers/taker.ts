@@ -22,6 +22,7 @@
  */
 import { Transaction } from '../fork/boundary.js';
 import { selectUtxos, assertTokenConservation } from '../utxo/index.js';
+import { estimateMinerFee, assertFeeMeetsRelayMinimum } from '../fee/index.js';
 import { getNetwork, assertNativeConservation } from '../signing/index.js';
 import { buildTokenChangeOutput, identityPaymentScript } from '../identity/index.js';
 import { signTakerInputs, type TakerInput } from './sign.js';
@@ -98,22 +99,16 @@ export function completeOffer(params: CompleteOfferParams, network: Network): Co
 
   // The taker's own UTXOs fund only the WANTED asset (paid to output 0) plus the
   // miner fee. When the wanted asset is a token it is a required currency; when
-  // native it is required native on top of the fee. numOutputs=3 (wanted, offered,
-  // change); +150 bytes accounts for the maker's input, which selectUtxos can't see.
+  // native it is required native on top of the fee. Both non-change outputs (the
+  // maker's wanted output 0 and the offered output 1 added above) are on `tx`, so
+  // the daemon's per-output fee is exact — no byte allowance for the maker's
+  // invisible input, because the daemon charges nothing for inputs.
   const wantedTokenReq = wantingNative
     ? new Map<string, bigint>()
     : new Map([[params.want.currency, params.want.amount]]);
   const requiredNative = wantingNative ? params.want.amount : 0n;
-  const selection = selectUtxos(
-    params.takerUtxos,
-    requiredNative,
-    wantedTokenReq,
-    3,
-    systemId,
-    undefined,
-    true,
-    150,
-  );
+  const minerFee = estimateMinerFee(tx.outs.map((o) => o.script));
+  const selection = selectUtxos(params.takerUtxos, requiredNative, wantedTokenReq, minerFee, systemId);
 
   const takerInputs: TakerInput[] = [];
   for (const u of selection.selected) {
@@ -153,6 +148,7 @@ export function completeOffer(params: CompleteOfferParams, network: Network): Co
   const takerNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
   const allInputsNative = commitmentNative + takerNativeIn;
   assertNativeConservation([{ satoshis: allInputsNative }], tx.outs, selection.fee, 'takeOffer');
+  assertFeeMeetsRelayMinimum(selection.fee, tx.outs.map((o) => o.script), 'takeOffer');
 
   const { signedTx, txid } = signTakerInputs(tx.toHex(), takerInputs, params.wif, network);
   return { swapTx: signedTx, txid };

@@ -33,6 +33,7 @@ import {
   type VerusCLIVerusIDJson,
 } from '../fork/boundary.js';
 import { selectUtxos } from '../utxo/index.js';
+import { estimateMinerFee, assertFeeMeetsRelayMinimum } from '../fee/index.js';
 import { getNetwork, assertNativeConservation, resolveExpiryHeight } from '../signing/index.js';
 import { buildIdentityScript, identityPaymentScript } from './index.js';
 import { toSafeNumber, addressToScriptPubKey } from '../utils/index.js';
@@ -125,8 +126,11 @@ export function buildMultisigIdentityUpdate(
   // The recreated identity output (value 0), from the desired new state.
   const newIdScript = buildIdentityScript(Identity.fromJson(params.newIdentity));
 
-  // Select native-only fee UTXOs; the identity output is value 0 so requiredNative is 0.
-  const selection = selectUtxos(params.funding, 0n, new Map(), 2, systemId, undefined, true, newIdScript.length + 100);
+  // Select native-only fee UTXOs; the identity output is value 0 so requiredNative
+  // is 0. The recreated identity output is the only declared output, and it prices
+  // its own identityFeeFactor (extra primary addresses, contentMultiMap bytes).
+  const minerFee = estimateMinerFee([newIdScript]);
+  const selection = selectUtxos(params.funding, 0n, new Map(), minerFee, systemId);
   if (selection.currencyChanges.size > 0) {
     throw new TransactionBuildError(
       'buildMultisigIdentityUpdate: funding must carry only the native coin; a token-bearing UTXO was selected and its reserve value would be lost.',
@@ -171,6 +175,7 @@ export function buildMultisigIdentityUpdate(
   // 0, so the funder's native inputs must equal the change + fee.
   const funderNativeIn = selection.selected.reduce((s, u) => s + u.satoshis, 0n);
   assertNativeConservation([{ satoshis: funderNativeIn }], tx.outs, selection.fee, 'multisigIdentityUpdate');
+  assertFeeMeetsRelayMinimum(selection.fee, tx.outs.map((o) => o.script), 'multisigIdentityUpdate');
 
   // Sign the funding inputs (P2PKH) with the funder's key; leave the CC input open.
   const funderKey = ECPair.fromWIF(params.funderWif, verusNetwork);

@@ -1,14 +1,16 @@
 /**
  * Client-side UTXO selection for Verus transactions
  *
- * Selects UTXOs to cover required native + currency amounts,
- * calculates fees, and determines change outputs.
+ * Selects UTXOs to cover required native + currency amounts and the
+ * caller-supplied miner fee, and determines change outputs. The fee itself is
+ * priced by `src/fee/index.ts` — the daemon derives it from the transaction's
+ * OUTPUTS, so it is known before selection and does not depend on it.
  *
  * All amounts are bigint satoshis — exact integer arithmetic only.
  */
 
 import { smarttxs, script as bscript, opcodes } from '../fork/boundary.js';
-import { NETWORK_CONFIG, DEFAULT_FEE_PER_KB, DUST_THRESHOLD } from '../constants/index.js';
+import { NETWORK_CONFIG, DEFAULT_TRANSACTION_FEE, DUST_THRESHOLD } from '../constants/index.js';
 import { InsufficientFundsError, TransactionBuildError } from '../errors.js';
 import { toSafeNumber } from '../utils/index.js';
 import type { Utxo, DecodedUtxo, SelectionResult } from '../types/index.js';
@@ -17,15 +19,6 @@ const { unpackOutput } = smarttxs;
 
 // Re-export types for convenience
 export type { Utxo, DecodedUtxo, SelectionResult };
-
-// Transaction size estimation constants
-const INPUT_SIZE = 180;
-const P2PKH_OUTPUT_SIZE = 34;
-const SMART_OUTPUT_SIZE = 200;
-const TX_OVERHEAD = 60;
-
-/** Absolute fee floor in satoshis */
-const MIN_FEE = 10_000n;
 
 /**
  * True when the script is a Verus smart (CryptoCondition) output. Used to
@@ -127,38 +120,31 @@ export function assertTokenConservation(
 }
 
 /**
- * Estimate transaction fee based on input/output counts
- */
-export function estimateFee(
-  numInputs: number,
-  numOutputs: number,
-  feePerKb: bigint = DEFAULT_FEE_PER_KB,
-  hasSmartOutputs: boolean = false,
-  extraBytes: number = 0
-): bigint {
-  const outputSize = hasSmartOutputs ? SMART_OUTPUT_SIZE : P2PKH_OUTPUT_SIZE;
-  // `extraBytes` accounts for pre-built outputs whose real size dwarfs the
-  // fixed per-output estimate (e.g. an identity output embedding a multi-KB
-  // contentMultimap). Without it a large tx is fee-estimated far below the
-  // relay minimum and the daemon rejects it.
-  const txSize = TX_OVERHEAD + numInputs * INPUT_SIZE + numOutputs * outputSize + extraBytes;
-  const fee = (BigInt(txSize) * feePerKb + 999n) / 1000n; // ceil(txSize * feePerKb / 1000)
-  return fee > MIN_FEE ? fee : MIN_FEE;
-}
-
-/**
- * Select UTXOs to cover required amounts
+ * Select UTXOs to cover the required amounts plus `fee`.
+ *
+ * `fee` is the miner fee the caller has already priced from its outputs with
+ * {@link estimateMinerFee}. It replaces the old `numOutputs` / `feePerKb` /
+ * `hasSmartOutputs` / `extraOutputBytes` parameters, which modelled a
+ * byte-size fee VerusCoin does not charge.
  */
 export function selectUtxos(
   utxos: Utxo[],
   requiredNative: bigint,
-  requiredCurrencies: Map<string, bigint> = new Map(),
-  numOutputs: number = 2,
-  systemId: string = NETWORK_CONFIG.mainnet.chainId,
-  feePerKb: bigint = DEFAULT_FEE_PER_KB,
-  hasSmartOutputs: boolean = false,
-  extraOutputBytes: number = 0
+  requiredCurrencies: Map<string, bigint>,
+  fee: bigint,
+  systemId: string = NETWORK_CONFIG.mainnet.chainId
 ): SelectionResult {
+  // The fee is an INPUT now, not a fixed point: the daemon prices a transaction
+  // by its outputs, which the caller knows before selection runs (see
+  // `src/fee/index.ts`). Fail closed on a non-bigint or below-minimum value —
+  // a JavaScript consumer still calling the old positional form would otherwise
+  // pass the old `numOutputs` (a small number) straight through as the fee.
+  if (typeof fee !== 'bigint' || fee < DEFAULT_TRANSACTION_FEE) {
+    throw new TransactionBuildError(
+      `selectUtxos: fee must be a bigint of at least ${DEFAULT_TRANSACTION_FEE} satoshis ` +
+        `(compute it with estimateMinerFee), got ${String(fee)}`,
+    );
+  }
   // Reject duplicate outpoints up front. An outpoint can only be spent once, so
   // the same (txid, outputIndex) twice is always a caller error. Left unchecked
   // its value is double-counted here (corrupting the funds accounting) and the
@@ -252,23 +238,6 @@ export function selectUtxos(
       return b.satoshis > a.satoshis ? 1 : b.satoshis < a.satoshis ? -1 : 0;
     });
 
-  const countCurrencyChanges = (): number => {
-    let n = 0;
-    for (const [currency, needed] of remaining) {
-      if (currency !== systemId && needed < 0n) n++;
-    }
-    return n;
-  };
-  let changeOutputCount = countCurrencyChanges();
-
-  let fee = estimateFee(
-    selected.length + 1,
-    numOutputs + 1 + changeOutputCount,
-    feePerKb,
-    hasSmartOutputs,
-    extraOutputBytes
-  );
-
   while (remainingNative + fee > 0n) {
     const next = nativeOnly.shift();
     if (!next) {
@@ -287,15 +256,6 @@ export function selectUtxos(
       if (currency === systemId || amount <= 0n) continue;
       remaining.set(currency, (remaining.get(currency) || 0n) - amount);
     }
-    changeOutputCount = countCurrencyChanges();
-
-    fee = estimateFee(
-      selected.length,
-      numOutputs + 1 + changeOutputCount,
-      feePerKb,
-      hasSmartOutputs,
-      extraOutputBytes
-    );
   }
 
   // Calculate change

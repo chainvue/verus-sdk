@@ -1,14 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { selectUtxos, estimateFee, assertTokenConservation } from '../src/utxo/index.js';
+import { selectUtxos, assertTokenConservation } from '../src/utxo/index.js';
+import { estimateMinerFee } from '../src/fee/index.js';
 import { buildTokenChangeOutput, deriveIdentityAddress } from '../src/identity/index.js';
 import { parseAddress } from '../src/core/brands.js';
-import { NETWORK_CONFIG } from '../src/constants/index.js';
+import { NETWORK_CONFIG, DEFAULT_TRANSACTION_FEE } from '../src/constants/index.js';
 import { TransactionBuildError } from '../src/errors.js';
 import type { Utxo } from '../src/types/index.js';
 
 const SYSTEM_ID = NETWORK_CONFIG.testnet.chainId;
 const TOKEN_CURRENCY = deriveIdentityAddress('toktest', SYSTEM_ID);
 const R_ADDR = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';
+
+/**
+ * The miner fee is an INPUT to selectUtxos now, not something it derives: the
+ * daemon prices a transaction by its outputs, which the caller knows first (see
+ * src/fee/index.ts). These selection tests pass the one-recipient fee; the old
+ * call sites passed `numOutputs: 2` here instead.
+ */
+const FEE = DEFAULT_TRANSACTION_FEE;
 
 /** A reserve-output UTXO carrying `amount` of TOKEN_CURRENCY, zero native. */
 function tokenUtxo(amount: bigint, index: number): Utxo {
@@ -38,31 +47,42 @@ function makeUtxo(satoshis: bigint, index: number = 0): Utxo {
 }
 
 describe('utxo', () => {
-  describe('estimateFee', () => {
-    it('should return minimum 10000 for small transactions', () => {
-      expect(estimateFee(1, 1)).toBeGreaterThanOrEqual(10000n);
+  describe('the fee no longer depends on the selection', () => {
+    // WAS: `should increase with more inputs` — estimateFee(5, 2) > estimateFee(1, 2),
+    // i.e. 180 bytes of fee per input. That is a false statement about VerusCoin:
+    // the daemon's ONLY input term is max(SpendCount() - 1, 0), and SpendCount()
+    // counts SAPLING spends (transaction_builder.h:123-126), which is 0 for every
+    // transparent transaction. Measured: VRSC txid 87c5bb69a41d778903b899d8880191\
+    // ede6e93e9da5c64bc90170bd8265e97150 (block 4,163,006) is 185,212 bytes with
+    // 1,255 inputs and paid exactly 10,000 satoshis.
+    it('is identical whether selection takes one input or five', () => {
+      const one = selectUtxos([makeUtxo(100_000_000n, 1)], 1_000_000n, new Map(), FEE, SYSTEM_ID);
+      const five = selectUtxos(
+        // 4 × 250_000 = 1_000_000 < need + fee, so all five are pulled in.
+        [1, 2, 3, 4, 5].map((i) => makeUtxo(250_000n, i)),
+        1_000_000n,
+        new Map(),
+        FEE,
+        SYSTEM_ID,
+      );
+      expect(five.selected).toHaveLength(5);
+      expect(five.fee).toBe(one.fee);
+      expect(five.fee).toBe(10_000n);
     });
 
-    it('should increase with more inputs', () => {
-      const fee1 = estimateFee(1, 2);
-      const fee5 = estimateFee(5, 2);
-      expect(fee5).toBeGreaterThan(fee1);
-    });
-
-    it('should use larger output size for smart outputs', () => {
-      // With many outputs, the difference exceeds the 10000 minimum floor
-      const feeP2PKH = estimateFee(5, 5, undefined, false);
-      const feeSmart = estimateFee(5, 5, undefined, true);
-      expect(feeSmart).toBeGreaterThan(feeP2PKH);
-    });
-
-    it('scales the fee with pre-built output bytes (large identity outputs)', () => {
-      const base = estimateFee(2, 2, undefined, true);
-      // e.g. an identity output carrying a ~5 KB contentMultimap
-      const withLargeOutput = estimateFee(2, 2, undefined, true, 5000);
-      expect(withLargeOutput).toBeGreaterThan(base);
-      // ~5000 bytes at the default 10000 sat/KB ≈ +50000 sat
-      expect(withLargeOutput - base).toBeGreaterThanOrEqual(45_000n);
+    it('rejects a fee below the daemon\'s standard transaction fee (fails closed)', () => {
+      // A JS consumer still calling the old positional form passes the old
+      // `numOutputs` (a small number) where the fee now goes.
+      // An untyped JS caller passing the old `numOutputs` where the fee now goes.
+      const asJsCaller = selectUtxos as unknown as (
+        u: Utxo[], n: bigint, c: Map<string, bigint>, fee: number, sys: string,
+      ) => unknown;
+      expect(() => asJsCaller([makeUtxo(100_000_000n, 1)], 1_000n, new Map(), 2, SYSTEM_ID)).toThrow(
+        TransactionBuildError,
+      );
+      expect(() => selectUtxos([makeUtxo(100_000_000n, 1)], 1_000n, new Map(), 9_999n, SYSTEM_ID)).toThrow(
+        /fee must be a bigint of at least 10000 satoshis/,
+      );
     });
   });
 
@@ -84,7 +104,7 @@ describe('utxo', () => {
         satoshis: 500_000_000n, // 5 VRSC native + 5.0 token on the same output
         script: TOKEN_SCRIPT,
       };
-      const result = selectUtxos([mixed], 100_000_000n, new Map(), 2, SYSTEM_ID);
+      const result = selectUtxos([mixed], 100_000_000n, new Map(), FEE, SYSTEM_ID);
       expect(result.selected.length).toBe(1);
       // The 5.0 token must be returned as change, not silently spent.
       expect(result.currencyChanges.get(TOKEN)).toBe(500_000_000n);
@@ -98,7 +118,7 @@ describe('utxo', () => {
         satoshis: 500_000_000n,
         script: TOKEN_SCRIPT,
       };
-      const result = selectUtxos([mixed, pureNative], 100_000_000n, new Map(), 2, SYSTEM_ID);
+      const result = selectUtxos([mixed, pureNative], 100_000_000n, new Map(), FEE, SYSTEM_ID);
       // Only the pure-native UTXO is spent; the token UTXO is left untouched.
       expect(result.selected).toHaveLength(1);
       expect(result.selected[0]?.txid).toBe(pureNative.txid);
@@ -112,10 +132,10 @@ describe('utxo', () => {
       // "Duplicate TxOut".
       const dup = makeUtxo(200_000n, 1);
       expect(() =>
-        selectUtxos([dup, dup], 250_000n, new Map(), 2, SYSTEM_ID)
+        selectUtxos([dup, dup], 250_000n, new Map(), FEE, SYSTEM_ID)
       ).toThrow(TransactionBuildError);
       expect(() =>
-        selectUtxos([dup, dup], 250_000n, new Map(), 2, SYSTEM_ID)
+        selectUtxos([dup, dup], 250_000n, new Map(), FEE, SYSTEM_ID)
       ).toThrow(/Duplicate UTXO/);
     });
 
@@ -126,7 +146,7 @@ describe('utxo', () => {
         makeUtxo(10_000_000n, 3),
       ];
 
-      const result = selectUtxos(utxos, 3_000_000n, new Map(), 2, SYSTEM_ID);
+      const result = selectUtxos(utxos, 3_000_000n, new Map(), FEE, SYSTEM_ID);
       expect(result.selected.length).toBeGreaterThan(0);
       const totalIn = result.selected.reduce((s, u) => s + u.satoshis, 0n);
       expect(totalIn).toBeGreaterThanOrEqual(3_000_000n + result.fee);
@@ -136,18 +156,18 @@ describe('utxo', () => {
     it('should throw when insufficient funds', () => {
       const utxos = [makeUtxo(100n, 1)];
       expect(() =>
-        selectUtxos(utxos, 1_000_000n, new Map(), 2, SYSTEM_ID)
+        selectUtxos(utxos, 1_000_000n, new Map(), FEE, SYSTEM_ID)
       ).toThrow('Insufficient VRSC balance');
     });
 
     it('should absorb dust change into fee', () => {
       // Create a UTXO that's just slightly more than needed
-      const fee = estimateFee(1, 3, undefined, false);
+      const fee = estimateMinerFee([Buffer.from(makeUtxo(0n, 1).script, 'hex')]);
       const needed = 1_000_000n;
       const dustExtra = 100n; // less than 546 threshold
       const utxos = [makeUtxo(needed + fee + dustExtra, 1)];
 
-      const result = selectUtxos(utxos, needed, new Map(), 2, SYSTEM_ID);
+      const result = selectUtxos(utxos, needed, new Map(), fee, SYSTEM_ID);
       // Change should be 0 (dust absorbed) or the exact fee slightly differs
       expect(result.nativeChange === 0n || result.nativeChange > 546n).toBe(true);
     });
@@ -159,7 +179,7 @@ describe('utxo', () => {
         makeUtxo(200_000n, 3),
       ];
 
-      const result = selectUtxos(utxos, 1_000_000n, new Map(), 2, SYSTEM_ID);
+      const result = selectUtxos(utxos, 1_000_000n, new Map(), FEE, SYSTEM_ID);
       // Should have selected the largest UTXO (50M)
       expect(result.selected.length).toBe(1);
       expect(result.selected[0]?.satoshis).toBe(50_000_000n);
@@ -170,7 +190,7 @@ describe('utxo', () => {
     it('throws instead of silently dropping a native-currency requirement', () => {
       const utxos = [makeUtxo(100_000_000n, 1)];
       expect(() =>
-        selectUtxos(utxos, 0n, new Map([[SYSTEM_ID, 50_000_000n]]), 2, SYSTEM_ID),
+        selectUtxos(utxos, 0n, new Map([[SYSTEM_ID, 50_000_000n]]), FEE, SYSTEM_ID),
       ).toThrow(/must not contain the native currency/);
     });
   });

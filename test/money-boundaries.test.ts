@@ -10,7 +10,8 @@ import { describe, it, expect } from 'vitest';
 import bs58check from 'bs58check';
 import { opcodes } from '@bitgo/utxo-lib';
 import { parseSats, toSatoshis, toCoins, toSafeNumber, addressToScriptPubKey } from '../src/utils/index.js';
-import { selectUtxos, decodeUtxo, estimateFee } from '../src/utxo/index.js';
+import { selectUtxos, decodeUtxo } from '../src/utxo/index.js';
+import { estimateMinerFee } from '../src/fee/index.js';
 import { buildTokenChangeOutput } from '../src/identity/index.js';
 import { parseAddress } from '../src/core/brands.js';
 import { InvalidAmountError, InvalidAddressError, TransactionBuildError } from '../src/errors.js';
@@ -21,6 +22,14 @@ const SYSTEM_ID = NETWORK_CONFIG.testnet.chainId;
 /** An arbitrary token i-address (VRSC-Bridge on testnet) for conservation tests. */
 const TOKEN_ID = 'i5Ej7Bec8AYqxBbFEEd3UCKKhhpqAAm1rh';
 const CHANGE_ADDR = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';
+/** A P2PKH scriptPubKey, for pricing a fee from an output shape. */
+const P2PKH_SCRIPT = Buffer.concat([
+  Buffer.from([0x76, 0xa9, 0x14]),
+  Buffer.alloc(20, 0),
+  Buffer.from([0x88, 0xac]),
+]);
+/** One declared recipient — the fee is now an input to selectUtxos, not derived. */
+const FEE = estimateMinerFee([P2PKH_SCRIPT]);
 
 function p2pkhUtxo(satoshis: bigint, index = 0): Utxo {
   const script = Buffer.concat([
@@ -108,7 +117,7 @@ describe('large amounts flow through selection as exact bigint', () => {
     const each = 5_000_000_000_000_000n; // 5e15 sat
     const utxos = [each, each, each].map((v, i) => p2pkhUtxo(v, i + 1));
     const need = 12_000_000_000_000_000n; // needs all three
-    const result = selectUtxos(utxos, need, new Map(), 2, SYSTEM_ID);
+    const result = selectUtxos(utxos, need, new Map(), FEE, SYSTEM_ID);
     const totalIn = result.selected.reduce((s, u) => s + u.satoshis, 0n);
     expect(result.selected.length).toBe(3);
     expect(totalIn).toBe(15_000_000_000_000_000n);
@@ -153,7 +162,7 @@ describe('selectUtxos — per-currency conservation + native accounting', () => 
     // UTXO for the fee. Requiring 400,000 of the token leaves 600,000 change.
     const utxos = [tokenUtxo(1_000_000n, 50_000n, 9), p2pkhUtxo(10_000_000n, 1)];
     const required = new Map([[TOKEN_ID, 400_000n]]);
-    const result = selectUtxos(utxos, 0n, required, 2, SYSTEM_ID, undefined, true);
+    const result = selectUtxos(utxos, 0n, required, FEE, SYSTEM_ID);
 
     // token change = held − required
     expect(result.currencyChanges.get(TOKEN_ID)).toBe(600_000n);
@@ -169,7 +178,7 @@ describe('selectUtxos — per-currency conservation + native accounting', () => 
     // credited once, not subtracted twice.
     const utxos = [tokenUtxo(1_000_000n, 10_000_000n, 9)];
     const required = new Map([[TOKEN_ID, 250_000n]]);
-    const result = selectUtxos(utxos, 0n, required, 2, SYSTEM_ID, undefined, true);
+    const result = selectUtxos(utxos, 0n, required, FEE, SYSTEM_ID);
     expect(result.selected.length).toBe(1);
     const nativeIn = result.selected.reduce((s, u) => s + u.satoshis, 0n);
     expect(nativeIn).toBe(result.fee + result.nativeChange);
@@ -179,7 +188,7 @@ describe('selectUtxos — per-currency conservation + native accounting', () => 
   it('throws typed InsufficientFundsError when the token balance is short', () => {
     const utxos = [tokenUtxo(100_000n, 50_000n, 9), p2pkhUtxo(10_000_000n, 1)];
     const required = new Map([[TOKEN_ID, 400_000n]]);
-    expect(() => selectUtxos(utxos, 0n, required, 2, SYSTEM_ID, undefined, true)).toThrow(/[Ii]nsufficient/);
+    expect(() => selectUtxos(utxos, 0n, required, FEE, SYSTEM_ID)).toThrow(/[Ii]nsufficient/);
   });
 });
 
@@ -187,19 +196,23 @@ describe('selectUtxos — dust boundary', () => {
   const DUST = 546n;
 
   it('keeps change strictly above the dust threshold', () => {
-    const fee = estimateFee(1, 3, undefined, false);
+    // WAS: estimateFee(1, 3, undefined, false) — a byte-size estimate that
+    // floored at 10000. The daemon charges per non-change OUTPUT, so two
+    // declared recipients cost 20000 (pbaasrpc.cpp:10769-10772). The dust
+    // arithmetic below is unchanged: the UTXO is sized off whatever the fee is.
+    const fee = estimateMinerFee([P2PKH_SCRIPT, P2PKH_SCRIPT]);
     const need = 1_000_000n;
     const utxos = [p2pkhUtxo(need + fee + DUST + 1n, 1)];
-    const result = selectUtxos(utxos, need, new Map(), 2, SYSTEM_ID);
+    const result = selectUtxos(utxos, need, new Map(), fee, SYSTEM_ID);
     expect(result.nativeChange).toBe(DUST + 1n);
   });
 
   it('absorbs change of exactly the dust threshold into the fee', () => {
-    const fee = estimateFee(1, 3, undefined, false);
+    const fee = estimateMinerFee([P2PKH_SCRIPT, P2PKH_SCRIPT]);
     const need = 1_000_000n;
     // change would be exactly DUST → not > DUST → absorbed into fee, change 0
     const utxos = [p2pkhUtxo(need + fee + DUST, 1)];
-    const result = selectUtxos(utxos, need, new Map(), 2, SYSTEM_ID);
+    const result = selectUtxos(utxos, need, new Map(), fee, SYSTEM_ID);
     expect(result.nativeChange).toBe(0n);
     expect(result.fee).toBe(fee + DUST);
   });
