@@ -1,5 +1,40 @@
 # Changelog
 
+# [0.16.0](https://github.com/chainvue/verus-sdk/compare/v0.15.0...v0.16.0) (2026-08-31)
+
+
+* feat!: price the miner fee by the daemon's output-count rule, not tx size ([#90](https://github.com/chainvue/verus-sdk/issues/90)) ([90021bb](https://github.com/chainvue/verus-sdk/commit/90021bb137087a27a7c6264e765110407af14da0)), closes [absurdly-HI#fee](https://github.com/absurdly-HI/issues/fee)
+
+
+### BREAKING CHANGES
+
+* `utxo.estimateFee` and `DEFAULT_FEE_PER_KB` are removed — they
+modelled a byte-size fee VerusCoin does not charge. `selectUtxos` now takes the
+fee instead of an output count: `selectUtxos(utxos, requiredNative,
+requiredCurrencies, fee, systemId)`; its `numOutputs`, `feePerKb`,
+`hasSmartOutputs` and `extraOutputBytes` parameters are gone, as are the
+`hasSmartOutputs` / `extraOutputBytes` / `feeOutputCount` intent fields. Added:
+`estimateMinerFee(outputScripts)`, `relayMinimumFee(outputScripts)`,
+`assertFeeMeetsRelayMinimum(fee, outputScripts, label)`,
+`computeIdentityFeeFactor(outputScripts)`, `LARGE_SCRIPT_FEE_THRESHOLD`, and
+`DEFAULT_TRANSACTION_FEE` (10_000n). Multi-recipient sends, currency launches
+and content-bearing identity updates now cost more, because they were
+underpaying; single-recipient sends and plain identity updates are unchanged.
+
+* test(fee): pin the large-script surcharge suppression for a lone identity output
+
+`estimateMinerFee`'s `!(identityFeeFactor && count <= 1 + idExtraLimit)` guard
+(pbaasrpc.cpp:10782, reserves.cpp:7951) had no test: the existing boundary
+fixtures use synthetic `scriptOfLength()` scripts, whose identity factor is 0,
+so they never enter the branch. Deleting the guard left the whole suite green
+while making every large-content identity update overpay by 10,000 satoshis.
+
+Two VRSC identity updates fix the expected value on chain — identity scripts of
+2072 and 2071 bytes, both over the 2000-byte threshold and both factor 14, paid
+exactly 140,000 and not 150,000:
+  99e341d67518e096058dfe13eea0be7a6244f339816b46d8330490115cc4d94c (h 4,163,324)
+  d68d9f6c992d262fe47dc3f54b599cf2a92372442603840b722a2222992f6317 (h 4,162,364)
+
 # [0.15.0](https://github.com/chainvue/verus-sdk/compare/v0.14.1...v0.15.0) (2026-07-27)
 
 
