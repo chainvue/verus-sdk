@@ -19,7 +19,7 @@ import {
 } from '../fork/boundary.js';
 import BN from 'bn.js';
 import bs58check from 'bs58check';
-import { NETWORK_CONFIG, VERSION_GROUP_ID, PUBKEY_HASH_PREFIX, I_ADDR_VERSION } from '../constants/index.js';
+import { NETWORK_CONFIG, VERSION_GROUP_ID, PUBKEY_HASH_PREFIX, I_ADDR_VERSION, RESERVE_TRANSFER_FEE } from '../constants/index.js';
 import type { Network } from '../constants/index.js';
 import { signTransactionSmart, getNetwork, validateFundedTransaction, resolveExpiryHeight } from '../signing/index.js';
 import { assembleAndSign } from '../assemble/assembler.js';
@@ -177,6 +177,16 @@ export function sendCurrency(
     if (out.feeCurrency !== undefined && out.feeCurrency !== systemId && out.feeSatoshis === undefined) {
       throw new TransactionBuildError('feeSatoshis is required when feeCurrency is a non-native token (the exact fee is conversion-dependent — query the node and pass it explicitly)');
     }
+    // A cross-chain export needs an explicit feeSatoshis too. Its fee is not the
+    // same-chain CalculateTransferFee: the destination system charges its own
+    // import fee (GetTransactionImportFee(), on the order of 1,000,000 sat for
+    // the ETH gateway), which is route- and chain-state-dependent and this
+    // offline SDK cannot read it. Both defaults available here — the fork's
+    // 300000 placeholder and the 20,000 same-chain floor — are *under*payments
+    // the daemon rejects, so fail closed instead of guessing.
+    if (out.exportTo !== undefined && out.feeSatoshis === undefined) {
+      throw new TransactionBuildError('feeSatoshis is required when exportTo is set (the cross-chain import fee is set by the destination system — query the node and pass it explicitly)');
+    }
   }
 
   const txOutputs = params.outputs.map((out) => {
@@ -186,6 +196,22 @@ export function sendCurrency(
     // native fee currency when the caller didn't set one.
     const forcesReserveTransfer = out.mintnew || out.burn || out.burnweight;
     const feecurrency = out.feeCurrency ?? (forcesReserveTransfer ? systemId : undefined);
+    // The fork decides reserve-transfer vs. plain output from the raw fields it
+    // is handed — feecurrency, feesatoshis, convertto, exportto, via — so a
+    // blanket feesatoshis default would silently promote an ordinary send into a
+    // reserve transfer. Only outputs already on that path get a fee.
+    const isReserveTransfer =
+      feecurrency !== undefined ||
+      out.convertTo !== undefined ||
+      out.exportTo !== undefined ||
+      out.via !== undefined;
+    // Left unset, the fork stamps a 300000 placeholder that matches no daemon
+    // constant and is funded from the sender's own native inputs. The daemon's
+    // CReserveTransfer::CalculateTransferFee (src/pbaas/reserves.cpp:24-31) is
+    // (10000 << 1) + (10000 << 1) * (destSize / 128); every destination this SDK
+    // builds is 20 bytes, so the size term is 0 and the fee is RESERVE_TRANSFER_FEE.
+    // Cross-chain is excluded — the guard above already forced an explicit value.
+    const feesatoshis = out.feeSatoshis ?? (isReserveTransfer ? RESERVE_TRANSFER_FEE : undefined);
     return {
       currency: out.currency,
       satoshis: out.satoshis.toString(10),
@@ -195,7 +221,7 @@ export function sendCurrency(
       ...(out.via !== undefined ? { via: out.via } : {}),
       ...(out.bridgeId !== undefined ? { bridgeid: out.bridgeId } : {}),
       ...(feecurrency !== undefined ? { feecurrency } : {}),
-      ...(out.feeSatoshis !== undefined ? { feesatoshis: out.feeSatoshis.toString(10) } : {}),
+      ...(feesatoshis !== undefined ? { feesatoshis: feesatoshis.toString(10) } : {}),
       ...(out.preconvert !== undefined ? { preconvert: out.preconvert } : {}),
       ...(out.mintnew !== undefined ? { mintnew: out.mintnew } : {}),
       ...(out.burn !== undefined ? { burn: out.burn } : {}),

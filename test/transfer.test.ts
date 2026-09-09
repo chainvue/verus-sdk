@@ -5,7 +5,7 @@ import { buildAndSign, transfer, transferToken, sendCurrency } from '../src/tran
 import { assertNativeConservation } from '../src/signing/index.js';
 import { addressToScriptPubKey } from '../src/utils/index.js';
 import { InsufficientFundsError, InvalidAddressError, TransactionBuildError } from '../src/errors.js';
-import { NETWORK_CONFIG } from '../src/constants/index.js';
+import { NETWORK_CONFIG, RESERVE_TRANSFER_FEE } from '../src/constants/index.js';
 
 const TEST_WIF = 'UusoQWsobQKUkezgBJa22D9G4t9Avo6k8wD5UUxmmfAEoTN8bawc';
 const TEST_ADDR = 'RQr2cUkF46n7y8WRzDkd1iV9gHusSSQuzX';
@@ -16,6 +16,31 @@ const TESTNET_SYSTEM_ID = NETWORK_CONFIG.testnet.chainId;
 
 function makeP2PKHScript(address: string): string {
   return addressToScriptPubKey(address).toString('hex');
+}
+
+/** Find the tx's single CryptoCondition (smart) output. */
+function ccOutputOf(signedTx: string): { script: Buffer; value: number } {
+  const tx = Transaction.fromHex(signedTx, networks.verustest);
+  const cc = tx.outs.find((o: { script: Buffer }) => {
+    const chunks = bscript.decompile(o.script);
+    return !!chunks && chunks.length === 4 && chunks[1] === opcodes.OP_CHECKCRYPTOCONDITION;
+  });
+  if (!cc) throw new Error('no CC output found');
+  return cc;
+}
+
+/** Pull the ReserveTransfer out of the tx's CryptoCondition output. */
+function reserveTransferOf(signedTx: string): ReserveTransfer {
+  const cc = ccOutputOf(signedTx);
+  const chunks = bscript.decompile(cc.script) as (Buffer | number)[];
+  const paramsChunk = chunks[2];
+  if (!Buffer.isBuffer(paramsChunk)) throw new Error('malformed CC output');
+  const params = OptCCParams.fromChunk(paramsChunk);
+  const vdata = params.vdata[0];
+  if (!Buffer.isBuffer(vdata)) throw new Error('CC output has no vdata');
+  const rt = new ReserveTransfer();
+  rt.fromBuffer(vdata);
+  return rt;
 }
 
 describe('transfer', () => {
@@ -302,25 +327,6 @@ describe('transfer', () => {
       script: makeP2PKHScript(TEST_ADDR),
     };
 
-    // Pull the ReserveTransfer out of the tx's CryptoCondition output.
-    function reserveTransferOf(signedTx: string): ReserveTransfer {
-      const tx = Transaction.fromHex(signedTx, networks.verustest);
-      const cc = tx.outs.find((o: { script: Buffer }) => {
-        const chunks = bscript.decompile(o.script);
-        return !!chunks && chunks.length === 4 && chunks[1] === opcodes.OP_CHECKCRYPTOCONDITION;
-      });
-      if (!cc) throw new Error('no CC output found');
-      const chunks = bscript.decompile(cc.script) as (Buffer | number)[];
-      const paramsChunk = chunks[2];
-      if (!Buffer.isBuffer(paramsChunk)) throw new Error('malformed CC output');
-      const params = OptCCParams.fromChunk(paramsChunk);
-      const vdata = params.vdata[0];
-      if (!Buffer.isBuffer(vdata)) throw new Error('CC output has no vdata');
-      const rt = new ReserveTransfer();
-      rt.fromBuffer(vdata);
-      return rt;
-    }
-
     it('mints new supply from native funding alone (no token input required)', () => {
       // The minted currency is CREATED, not spent, so the build must not demand a
       // token input — it previously threw INSUFFICIENT_FUNDS here.
@@ -389,5 +395,139 @@ describe('transfer', () => {
         ),
       ).toThrow(/mintnew cannot be combined/);
     });
+  });
+});
+
+// The fee carried *inside* the CReserveTransfer (its nFees), not the miner fee.
+// The vendored fork defaults it to a 300000 placeholder that matches no daemon
+// constant; the daemon's CReserveTransfer::CalculateTransferFee
+// (src/pbaas/reserves.cpp:24-31) computes (10000 << 1) + (10000 << 1) *
+// (destSize / 128) = 20000 for the 20-byte destinations this SDK builds.
+describe('sendCurrency reserve-transfer fee', () => {
+  const nativeUtxo = {
+    txid: 'a'.repeat(64),
+    outputIndex: 0,
+    satoshis: 100_000_000n,
+    script: makeP2PKHScript(TEST_ADDR),
+  };
+
+  it('stamps the daemon-computed 20,000 sat fee on a same-chain conversion', () => {
+    const amount = 10_000_000n;
+    const r = sendCurrency(
+      {
+        wif: TEST_WIF,
+        outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: amount, address: TEST_ADDR, addressType: 'PKH', convertTo: TEST_IADDR }],
+        utxos: [nativeUtxo],
+        changeAddress: TEST_ADDR,
+        expiryHeight: 0,
+      },
+      'testnet',
+    );
+    const rt = reserveTransferOf(r.signedTx);
+    expect(rt.isConversion()).toBe(true);
+    expect(rt.fee_currency_id).toBe(TESTNET_SYSTEM_ID);
+    expect(rt.fee_amount.toString(10)).toBe('20000');
+    // The native fee rides inside the transfer output's value, so the output is
+    // funded from the sender's own coin — it must be amount + fee, not
+    // amount + 300000.
+    expect(BigInt(ccOutputOf(r.signedTx).value)).toBe(amount + RESERVE_TRANSFER_FEE);
+  });
+
+  it('stamps 20,000 on a reserve-to-reserve conversion routed via a bridge', () => {
+    const r = sendCurrency(
+      {
+        wif: TEST_WIF,
+        outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 1_000_000n, address: TEST_ADDR, addressType: 'PKH', convertTo: TEST_IADDR, via: TEST_IADDR }],
+        utxos: [nativeUtxo],
+        changeAddress: TEST_ADDR,
+        expiryHeight: 0,
+      },
+      'testnet',
+    );
+    const rt = reserveTransferOf(r.signedTx);
+    expect(rt.isReserveToReserve()).toBe(true);
+    expect(rt.fee_amount.toString(10)).toBe('20000');
+  });
+
+  it('stamps 20,000 on a mint, which is forced onto the reserve-transfer path', () => {
+    const r = sendCurrency(
+      {
+        wif: TEST_WIF,
+        outputs: [{ currency: TEST_IADDR, satoshis: 5_000_00000000n, address: TEST_IADDR, addressType: 'ID', mintnew: true }],
+        utxos: [nativeUtxo],
+        changeAddress: TEST_ADDR,
+        expiryHeight: 0,
+      },
+      'testnet',
+    );
+    const rt = reserveTransferOf(r.signedTx);
+    expect(rt.fee_amount.toString(10)).toBe('20000');
+    // A token output carries no native amount of its own — only the fee.
+    expect(BigInt(ccOutputOf(r.signedTx).value)).toBe(RESERVE_TRANSFER_FEE);
+  });
+
+  it('leaves an explicit feeSatoshis untouched', () => {
+    const r = sendCurrency(
+      {
+        wif: TEST_WIF,
+        outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 1_000_000n, address: TEST_ADDR, addressType: 'PKH', convertTo: TEST_IADDR, feeSatoshis: 20_010n }],
+        utxos: [nativeUtxo],
+        changeAddress: TEST_ADDR,
+        expiryHeight: 0,
+      },
+      'testnet',
+    );
+    expect(reserveTransferOf(r.signedTx).fee_amount.toString(10)).toBe('20010');
+  });
+
+  it('does not turn a plain native send into a reserve transfer', () => {
+    // The fork decides reserve-transfer vs. plain P2PKH from the raw fields it is
+    // handed, feesatoshis among them — a blanket default would promote every
+    // ordinary send into a reserve transfer.
+    const r = sendCurrency(
+      {
+        wif: TEST_WIF,
+        outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 1_000_000n, address: TEST_ADDR_B, addressType: 'PKH' }],
+        utxos: [nativeUtxo],
+        changeAddress: TEST_ADDR,
+        expiryHeight: 0,
+      },
+      'testnet',
+    );
+    expect(() => ccOutputOf(r.signedTx)).toThrow(/no CC output/);
+  });
+
+  it('requires an explicit feeSatoshis for a cross-chain export', () => {
+    // 20,000 is the *same-chain* floor. A cross-chain export is priced by the
+    // destination system's GetTransactionImportFee(), which this offline SDK
+    // cannot read — fail closed rather than emit an under-funded transfer.
+    expect(() =>
+      sendCurrency(
+        {
+          wif: TEST_WIF,
+          outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 1_000_000n, address: TEST_ADDR, addressType: 'PKH', exportTo: TEST_IADDR, bridgeId: TEST_IADDR }],
+          utxos: [nativeUtxo],
+          changeAddress: TEST_ADDR,
+          expiryHeight: 0,
+        },
+        'testnet',
+      ),
+    ).toThrow(/feeSatoshis is required when exportTo/);
+  });
+
+  it('accepts a cross-chain export with an explicit feeSatoshis', () => {
+    const r = sendCurrency(
+      {
+        wif: TEST_WIF,
+        outputs: [{ currency: TESTNET_SYSTEM_ID, satoshis: 1_000_000n, address: TEST_ADDR, addressType: 'PKH', exportTo: TEST_IADDR, bridgeId: TEST_IADDR, feeSatoshis: 1_000_000n }],
+        utxos: [nativeUtxo],
+        changeAddress: TEST_ADDR,
+        expiryHeight: 0,
+      },
+      'testnet',
+    );
+    const rt = reserveTransferOf(r.signedTx);
+    expect(rt.isCrossSystem()).toBe(true);
+    expect(rt.fee_amount.toString(10)).toBe('1000000');
   });
 });

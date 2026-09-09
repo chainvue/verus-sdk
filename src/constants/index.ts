@@ -46,7 +46,29 @@ export const DEFAULT_REGISTRATION_FEE = 10_000_000_000n;
 /** Default referral levels for identity registration */
 export const DEFAULT_REFERRAL_LEVELS = 3;
 
-/** CReserveTransfer VRSC fee (20000 sat = 0.0002 VRSC) */
+/**
+ * The SAME-CHAIN `CReserveTransfer` fee floor: 20,000 sat = 0.0002 VRSC.
+ *
+ * `CReserveTransfer::CalculateTransferFee` (`src/pbaas/reserves.cpp:24-31`) is
+ * `(DEFAULT_PER_STEP_FEE << 1) + (DEFAULT_PER_STEP_FEE << 1) * (destSize /
+ * DESTINATION_BYTE_DIVISOR)` with `DEFAULT_PER_STEP_FEE = 10000` and
+ * `DESTINATION_BYTE_DIVISOR = 128`. Every destination this SDK builds is 20
+ * bytes, so the size term is 0 and the fee is a flat 20,000. The same-chain
+ * consensus check (`src/pbaas/pbaas.cpp`) rejects strictly *below* this, so
+ * exactly 20,000 is accepted.
+ *
+ * NOT a universal transfer fee:
+ * - It is a floor, not a promise of the exact charge — the daemon re-denominates
+ *   the fee into the conversion's currency, so a live conversion can settle at
+ *   e.g. 20,010 (see `test/currency-reserve-transfer.test.ts`). Chain state
+ *   decides; 20,000 is what the SDK guards.
+ * - It does NOT apply cross-chain. An `exportTo` transfer is priced by the
+ *   destination system's `GetTransactionImportFee()` (order of 1,000,000 sat for
+ *   the ETH gateway), which an offline SDK cannot read — `sendCurrency` requires
+ *   an explicit `feeSatoshis` there instead of defaulting.
+ * - A destination of 128 bytes or more (a gateway leg) adds another 20,000 per
+ *   128-byte step. This SDK builds no such destination.
+ */
 export const RESERVE_TRANSFER_FEE = 20_000n;
 
 /** Canonical eval pubkey address for EVAL_RESERVE_TRANSFER */

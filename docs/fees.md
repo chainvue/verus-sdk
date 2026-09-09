@@ -104,7 +104,39 @@ exists to avoid, and it is why the fee is asserted rather than assumed.
 
 ## The reserve-transfer fee is separate
 
-A conversion's `CReserveTransfer` carries its own `nFees`
-(`RESERVE_TRANSFER_FEE`, 20,000 satoshis — `src/pbaas/reserves.cpp:24-31`) inside
-the transfer output's value. That is a protocol fee paid *in addition to* the
-miner fee above, not instead of it.
+A conversion's `CReserveTransfer` carries its own `nFees` inside the transfer
+output's value. That is a protocol fee paid *in addition to* the miner fee above,
+not instead of it — and it is funded from your own native inputs, so it leaves
+the wallet whether or not you passed a `feeSatoshis`.
+
+**Same chain.** `CReserveTransfer::CalculateTransferFee`
+(`src/pbaas/reserves.cpp:24-31`) is
+
+```
+(DEFAULT_PER_STEP_FEE << 1) + (DEFAULT_PER_STEP_FEE << 1) * (destSize / DESTINATION_BYTE_DIVISOR)
+```
+
+with `DEFAULT_PER_STEP_FEE = 10000` and `DESTINATION_BYTE_DIVISOR = 128`. Every
+destination this SDK builds is 20 bytes, so the size term is 0 and the fee is a
+flat **20,000 satoshis** (`RESERVE_TRANSFER_FEE`). `sendCurrency` stamps that on
+every same-chain reserve transfer it builds — `convertTo`, `via`, `preconvert`,
+`mintnew`, `burn`, `burnweight`, or a native `feeCurrency` — unless you pass an
+explicit `feeSatoshis`.
+
+20,000 is the *floor* the consensus check enforces (`src/pbaas/pbaas.cpp` rejects
+strictly below it), not a promise of the exact charge: the daemon re-denominates
+the fee into the conversion's currency, so a live conversion can settle slightly
+above it (this repo byte-locks a live reference of 20,010 — 20,000 × 1.0005). If
+you need the exact figure for a specific conversion, take it from the node
+(`sendcurrency … returntxtemplate`) and pass it as `feeSatoshis`.
+
+**Cross chain.** An `exportTo` transfer is not priced by that rule at all. The
+destination system charges its own import fee (`GetTransactionImportFee()`, on the
+order of 1,000,000 satoshis for the ETH gateway), which depends on the route and
+on chain state that an offline SDK cannot read. `sendCurrency` therefore
+**requires** an explicit `feeSatoshis` whenever `exportTo` is set and throws
+`TransactionBuildError` without one, rather than emitting an under-funded transfer
+the daemon rejects.
+
+`SendCurrencyResult.fee` reports the *miner* fee only; the transfer fee above is
+not included in it.
