@@ -1,5 +1,18 @@
 # Changelog
 
+# [0.17.0](https://github.com/chainvue/verus-sdk/compare/v0.16.0...v0.17.0) (2026-09-10)
+
+
+* feat!: stamp the daemon's same-chain transfer fee (20,000), require an explicit fee cross-chain ([f54a2c4](https://github.com/chainvue/verus-sdk/commit/f54a2c48c1d498cae4ab7c6fd4c6c331ebcb8972)), closes [#91](https://github.com/chainvue/verus-sdk/issues/91)
+
+
+### BREAKING CHANGES
+
+* same-chain reserve transfers built without an explicit
+`feeSatoshis` now declare a fee of 20000 instead of 300000, and the transfer
+output's native value drops by 280000 satoshis. `sendCurrency` now throws
+`TransactionBuildError` when `exportTo` is set without a `feeSatoshis`.
+
 # [0.16.0](https://github.com/chainvue/verus-sdk/compare/v0.15.0...v0.16.0) (2026-08-31)
 
 
