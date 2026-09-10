@@ -58,7 +58,7 @@
     "typescript-eslint": "^8.63.0",
     "verus-typescript-primitives": "github:VerusCoin/verus-typescript-primitives#4243cd075b4f68df1ce72fd2fd9c9b18ac36767e",
     "vite": "^8.1.4",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.0"
   },
   "engines": {
     "node": ">=18"
