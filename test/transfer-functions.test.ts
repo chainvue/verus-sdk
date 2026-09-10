@@ -236,6 +236,9 @@ describe('sendCurrency()', () => {
           addressType: 'PKH',
           exportTo: exportSystem,
           bridgeId,
+          // A cross-chain export must declare its fee explicitly — the
+          // destination system's import fee is not the same-chain 20,000 floor.
+          feeSatoshis: 1_000_000n,
         },
       ],
       utxos,
@@ -262,6 +265,9 @@ describe('sendCurrency()', () => {
           addressType: 'ETH',
           exportTo: exportSystem,
           bridgeId,
+          // A cross-chain export must declare its fee explicitly — the
+          // destination system's import fee is not the same-chain 20,000 floor.
+          feeSatoshis: 1_000_000n,
         },
       ],
       utxos,

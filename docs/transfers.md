@@ -122,7 +122,12 @@ sdk.sendCurrency({
 ```
 
 A cross-chain send exports to another system — add `exportTo` (and `bridgeId`
-when routing through a bridge converter), paying the export fee in `feeCurrency`:
+when routing through a bridge converter), paying the export fee in `feeCurrency`.
+**`feeSatoshis` is required here**: the destination system prices the import
+itself (`GetTransactionImportFee()`, on the order of 1,000,000 satoshis for the
+ETH gateway), and an offline SDK cannot read it — omit it and `sendCurrency`
+throws `TransactionBuildError` rather than build an under-funded transfer. Take
+the figure from the node (`sendcurrency … returntxtemplate`).
 
 ```ts
 sdk.sendCurrency({
@@ -134,6 +139,7 @@ sdk.sendCurrency({
     exportTo: "i…destinationSystem",
     bridgeId: "i…bridgeConverter",
     feeCurrency: "i…destinationSystem",
+    feeSatoshis: 1_000_000n,    // required for exportTo; query the node
     address: "0x…",             // an ETH address for an ETH gateway
     addressType: "ETH",
   }],
@@ -146,6 +152,21 @@ sdk.sendCurrency({
 See `CurrencyOutput` in the type surface for every optional field (cross-chain
 `exportTo`, `bridgeId`, `feeCurrency` / `feeSatoshis`, `preconvert`, and the
 `mintnew` / `burn` / `burnweight` flags below).
+
+### The transfer fee (`feeSatoshis`)
+
+A reserve transfer carries its own protocol fee inside the transfer output's
+value, funded from your native inputs and *separate* from the miner fee that
+`SendCurrencyResult.fee` reports. Leave `feeSatoshis` unset on a **same-chain**
+transfer — `convertTo`, `via`, `preconvert`, `mintnew`, `burn`, `burnweight`, or a
+native `feeCurrency` — and the SDK stamps `RESERVE_TRANSFER_FEE` (20,000
+satoshis), which is what the daemon's `CReserveTransfer::CalculateTransferFee`
+computes for the 20-byte destinations this SDK builds. That is the consensus
+floor, not a promise of the exact charge; pass an explicit `feeSatoshis` when you
+have the node's figure. See [fees.md](./fees.md).
+
+A non-native `feeCurrency`, and any `exportTo`, both require an explicit
+`feeSatoshis`.
 
 ## Pre-convert — invest in a launching currency
 

@@ -108,7 +108,18 @@ export interface CurrencyOutput {
   bridgeId?: string;
   /** Fee currency i-address */
   feeCurrency?: string;
-  /** Fee amount in satoshis */
+  /**
+   * The `CReserveTransfer`'s own fee, in satoshis of `feeCurrency` — a protocol
+   * fee carried inside the transfer output's value, separate from the miner fee
+   * `SendCurrencyResult.fee` reports.
+   *
+   * Optional on a same-chain transfer: it defaults to `RESERVE_TRANSFER_FEE`
+   * (20,000), the daemon's `CalculateTransferFee` result for the 20-byte
+   * destinations this SDK builds. Required — `TransactionBuildError` without it —
+   * when `exportTo` is set (the destination system's import fee) or when
+   * `feeCurrency` is a non-native token (conversion-dependent). Query the node
+   * (`sendcurrency … returntxtemplate`) for those.
+   */
   feeSatoshis?: bigint;
   /** Pre-conversion flag */
   preconvert?: boolean;
