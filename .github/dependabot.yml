@@ -1,0 +1,72 @@
+# Dependabot for @chainvue/verus-sdk.
+#
+# Ecosystems found in the repo: npm (package.json + pnpm-lock.yaml) and
+# github-actions (ci.yml, release.yml — actions are SHA-pinned with `# vN`
+# comments, which is what Dependabot reads to bump them).
+#
+# Commit-message prefixes follow the repo's semantic-release setup (angular
+# preset), as in chainvue/verus-rpc:
+# - runtime deps    -> fix(deps)       -> patch release (adopters get the bump)
+# - dev deps        -> chore(deps-dev) -> no release
+# - GitHub Actions  -> ci(deps)        -> no release
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
+
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: fix
+      prefix-development: chore
+      include: scope
+    groups:
+      # Peer-coupled toolchains, grouped so a bump can never land half-applied.
+      # The concrete incident: in peculium-wallet Dependabot bumped `vitest`
+      # and left `@vitest/coverage-v8` behind, and the peer mismatch broke CI.
+      # `vite` belongs in the same PR because it is vitest's own peer.
+      vitest:
+        patterns:
+          - vitest
+          - "@vitest/*"
+          - vite
+      # eslint, typescript-eslint and the config packages type-check each other
+      # through peer ranges; typescript rides along so a compiler bump and the
+      # parser that has to understand it move together.
+      eslint:
+        patterns:
+          - eslint
+          - "@eslint/*"
+          - typescript-eslint
+          - "@typescript-eslint/*"
+          - globals
+          - typescript
+      # semantic-release plugins are pinned to the core's plugin API.
+      semantic-release:
+        patterns:
+          - semantic-release
+          - "@semantic-release/*"
+      dev-dependencies:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+    ignore:
+      # Same gate as chainvue/verus-rpc: TypeScript majors are held back by
+      # typescript-eslint, whose peer range is `>=4.8.4 <6.1.0` as of 8.6x. A
+      # TS 7 bump would make `pnpm lint` fail, so the PR could never go green.
+      # Remove once typescript-eslint's peer range admits the major.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # Pinned to specific VerusCoin commits through pnpm `overrides`, and
+      # bitcoin-ops is additionally patched (patches/bitcoin-ops.patch). An
+      # automatic bump would move the commit out from under the patch and break
+      # `pnpm install`; these move by hand.
+      - dependency-name: bitcoin-ops
+      - dependency-name: verus-typescript-primitives
