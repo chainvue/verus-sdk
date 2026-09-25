@@ -45,8 +45,8 @@ importers:
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.7.0)
       '@semantic-release/changelog':
-        specifier: ^6.0.3
-        version: 6.0.3(semantic-release@25.0.7(typescript@5.9.3))
+        specifier: ^7.0.0
+        version: 7.0.0(semantic-release@25.0.7(typescript@5.9.3))
       '@semantic-release/exec':
         specifier: ^7.1.0
         version: 7.1.0(semantic-release@25.0.7(typescript@5.9.3))
@@ -145,7 +145,7 @@ packages:
     resolution: {integrity: sha512-+Neg+nsqUhYOPlvyITHXYzKUTJofyxYdLQTzNjufamifBzxLGTpgn2KKUfvGNsGovlUYzlyPZj+CB6je2D7mhw==}
 
   '@bitgo/utxo-lib@https://codeload.github.com/VerusCoin/BitGoJS/tar.gz/9701df63b479984f27680348f9671c2d40025a90':
-    resolution: {gitHosted: true, integrity: sha512-VO8XwxFNpult6vm27+GTJVAFEnnGuvRKdmXk+I5PDjK/as8fAnC5dUC69P5Iesr+y1OOlxONeBaP2UsaETF5Aw==, tarball: https://codeload.github.com/VerusCoin/BitGoJS/tar.gz/9701df63b479984f27680348f9671c2d40025a90}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/VerusCoin/BitGoJS/tar.gz/9701df63b479984f27680348f9671c2d40025a90}
     version: 1.9.6
     engines: {node: '>=10.22.0', npm: '>=3.10.10'}
 
@@ -706,11 +706,11 @@ packages:
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
 
-  '@semantic-release/changelog@6.0.3':
-    resolution: {integrity: sha512-dZuR5qByyfe3Y03TpmCvAxCyTnp7r5XwtHRf/8vD9EAn4ZWbavUX8adMtXYzE86EVh0gyLA7lm5yW4IV30XUag==}
-    engines: {node: '>=14.17'}
+  '@semantic-release/changelog@7.0.0':
+    resolution: {integrity: sha512-TNPyag5db24o7jWjre7UwKB4EcL8oJxbRhnDQ7hmZRAYqzreAc6PgdxQuU3pppp5xQinYtiumL0iG8SSKvnlzg==}
+    engines: {node: ^22.22.2 || >=24.15}
     peerDependencies:
-      semantic-release: '>=18.0.0'
+      semantic-release: '>=20.1.0'
 
   '@semantic-release/commit-analyzer@13.0.1':
     resolution: {integrity: sha512-wdnBPHKkr9HhNhXOhZD5a2LNl91+hs8CC2vsAVYxtZH3y0dV3wKn+uZSN61rdJQZ8EGxzWB3inWocBHV9+u/CQ==}
@@ -976,8 +976,8 @@ packages:
     resolution: {integrity: sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==}
     engines: {node: '>= 0.4'}
 
-  b4a@1.8.1:
-    resolution: {integrity: sha512-aiqre1Nr0B/6DgE2N5vwTc+2/oQZ4Wh1t4NznYY4E00y8LCt6NqdRv81so00oo27D8MVKTpUa/MwUUtBLXCoDw==}
+  b4a@1.9.0:
+    resolution: {integrity: sha512-dpfcF9fDNR6++cthXR67iyhgqWy9CBouAvIWhIntzBG6cvK/cnIPiZQjBwi/ZqjjBEDGfoNDtmB0kTjroOJ3pQ==}
     peerDependencies:
       react-native-b4a: '*'
     peerDependenciesMeta:
@@ -1021,14 +1021,14 @@ packages:
     resolution: {integrity: sha512-dBoAPJYg6HaaQeJGr4cNiqat1meGzlrv2qX+EJcW5q0zEdryMSLKlQKdTaCtDnrzEUPkwmlYqsD7ANaye4BEfg==}
 
   bitcoin-ops@https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd:
-    resolution: {gitHosted: true, integrity: sha512-+3LLV17SuOeTYf0ENXqE/O/9/5e10badygAMVCTKrkAwUDHVb9wGz+b7lTi3ORluN0MgzfHwt8Y26xOz9AoG8g==, tarball: https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/VerusCoin/bitcoin-ops/tar.gz/a5f8f56e658301bc39881d41740b3a0010530efd}
     version: 1.4.1
 
   blake2b-wasm@2.4.0:
     resolution: {integrity: sha512-S1kwmW2ZhZFFFOghcx73+ZajEfKBqhP82JMssxtLVMxlaPea1p9uoLiUZ5WYyHn0KddwbLc+0vh4wR0KBNoT5w==}
 
   blake2b@https://codeload.github.com/VerusCoin/blake2b/tar.gz/578dc12b7b68a3ce76d1e1add1402b28a5890a6b:
-    resolution: {gitHosted: true, integrity: sha512-GEeL7g7d9GL3IQLvW48tQDB6tab1oLevNYhKrVRmM9IMRhHTC3E42IqX0oiFu8GOfqZ16YERHCOmCR95QFKHfQ==, tarball: https://codeload.github.com/VerusCoin/blake2b/tar.gz/578dc12b7b68a3ce76d1e1add1402b28a5890a6b}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/VerusCoin/blake2b/tar.gz/578dc12b7b68a3ce76d1e1add1402b28a5890a6b}
     version: 2.1.4
 
   bn.js@5.2.1:
@@ -2730,7 +2730,7 @@ packages:
     resolution: {integrity: sha512-2nW4pVicYWxOMY1u+3T3eFXw24wbFlKz+ug7hd02rozYmeFVBoC6LB7/P4E46jN9aD1ezhX01g2Uh4zrZ+9RWw==}
 
   verus-typescript-primitives@https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e:
-    resolution: {gitHosted: true, integrity: sha512-w9V6auMpHEWKOuPrqYZ5hfVOn4QND/3k2Qco8gQMV4opBnJFCXTQULEmiFYvYerbgRIXTXoMLBT26U7MkCI5fQ==, tarball: https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/VerusCoin/verus-typescript-primitives/tar.gz/4243cd075b4f68df1ce72fd2fd9c9b18ac36767e}
     version: 1.0.0
 
   vite@8.1.4:
@@ -3340,12 +3340,11 @@ snapshots:
 
   '@sec-ant/readable-stream@0.4.1': {}
 
-  '@semantic-release/changelog@6.0.3(semantic-release@25.0.7(typescript@5.9.3))':
+  '@semantic-release/changelog@7.0.0(semantic-release@25.0.7(typescript@5.9.3))':
     dependencies:
-      '@semantic-release/error': 3.0.0
-      aggregate-error: 3.1.0
-      fs-extra: 11.3.6
-      lodash: 4.18.1
+      '@semantic-release/error': 4.0.0
+      aggregate-error: 5.0.0
+      lodash-es: 4.18.1
       semantic-release: 25.0.7(typescript@5.9.3)
 
   '@semantic-release/commit-analyzer@13.0.1(semantic-release@25.0.7(typescript@5.9.3))':
@@ -3704,7 +3703,7 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
-  b4a@1.8.1: {}
+  b4a@1.9.0: {}
 
   balanced-match@4.0.4: {}
 
@@ -3741,7 +3740,7 @@ snapshots:
 
   blake2b-wasm@2.4.0:
     dependencies:
-      b4a: 1.8.1
+      b4a: 1.9.0
       nanoassert: 2.0.0
     transitivePeerDependencies:
       - react-native-b4a
