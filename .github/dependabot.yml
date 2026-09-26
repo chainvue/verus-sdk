@@ -64,6 +64,19 @@ updates:
       # Remove once typescript-eslint's peer range admits the major.
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
+      # `@vitest/coverage-v8` pins `vitest` *exactly* (4.1.x declares
+      # `vitest: '4.1.10'`), so a vitest major without a matching provider major
+      # gives `TypeError: Expected string coverage payload, received object`,
+      # coverage collapses to 0%, and `test:coverage` fails its thresholds while
+      # every test passes. pnpm only warns on the unsatisfied peer, so
+      # `--frozen-lockfile` installs and the break surfaces at runtime. The
+      # `vitest` group above cannot help when no provider major exists to group
+      # with — see #97, closed for exactly this. Remove once
+      # `@vitest/coverage-v8` ships the matching major.
+      - dependency-name: vitest
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/coverage-v8"
+        update-types: ["version-update:semver-major"]
       # Pinned to specific VerusCoin commits through pnpm `overrides`, and
       # bitcoin-ops is additionally patched (patches/bitcoin-ops.patch). An
       # automatic bump would move the commit out from under the patch and break
