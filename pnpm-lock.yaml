@@ -28,9 +28,6 @@ importers:
       create-hash:
         specifier: ^1.2.0
         version: 1.2.0
-      ecpair:
-        specifier: ^2.1.0
-        version: 2.1.0
       tiny-secp256k1:
         specifier: ^2.2.4
         version: 2.2.4
@@ -1302,10 +1299,6 @@ packages:
   duplexer2@0.1.4:
     resolution: {integrity: sha512-asLFVfWWtJ90ZyOUHMqk7/S2w2guQKxUI2itj3d92ADHhxUSbCMGi1f1cBcJ7xM1To+pE/Khbwo1yuNbMEPKeA==}
 
-  ecpair@2.1.0:
-    resolution: {integrity: sha512-cL/mh3MtJutFOvFc27GPZE2pWL3a3k4YvzUWEOvilnfZVlH3Jwgx/7d6tlD7/75tNk8TG2m+7Kgtz0SI1tWcqw==}
-    engines: {node: '>=8.0.0'}
-
   ecurve@1.0.0:
     resolution: {integrity: sha512-gwAh/B9hSnkq5SssZhJnXaXHcKrBK2tCh76G12+BXXjqLH4Kx1QBALz9IszvUtrxhM9+SBXx6fU0dW4WDBk2pA==}
 
@@ -2331,9 +2324,6 @@ packages:
 
   randombytes@2.0.1:
     resolution: {integrity: sha512-siCt2duOdZbmvgk8IDL4U0SYXI8ypBEKWuor0qUpHBWAyOCrXQvSIYJ+VKuEpoX36moZ1pAu+mXkwUVAVssu6w==}
-
-  randombytes@2.1.0:
-    resolution: {integrity: sha512-vYl3iOX+4CKUWuxGi9Ukhie6fsqXqS9FE2Zaic4tNFD2N2QQaXOMFbuKK4QmDHC0JO6B1Zp41J0LpT0oR68amQ==}
 
   rc@1.2.8:
     resolution: {integrity: sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==}
@@ -4064,12 +4054,6 @@ snapshots:
     dependencies:
       readable-stream: 2.3.8
 
-  ecpair@2.1.0:
-    dependencies:
-      randombytes: 2.1.0
-      typeforce: 1.18.0
-      wif: 2.0.6
-
   ecurve@1.0.0:
     dependencies:
       bigi: 1.4.0
@@ -4961,10 +4945,6 @@ snapshots:
       hookified: 2.2.0
 
   randombytes@2.0.1: {}
-
-  randombytes@2.1.0:
-    dependencies:
-      safe-buffer: 5.2.1
 
   rc@1.2.8:
     dependencies:

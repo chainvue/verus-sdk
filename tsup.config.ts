@@ -7,7 +7,7 @@
  * .pnpmfile.cjs hook are workspace-local. This config INLINES the forks
  * (and their transitive fork deps, e.g. blake2b) into one CJS artifact at
  * publish time. Regular npm dependencies — bn.js, bs58check, create-hash,
- * ecpair, tiny-secp256k1 (wasm), wif — stay external and install normally.
+ * tiny-secp256k1 (wasm), wif — stay external and install normally.
  *
  * Layout: `build` (tsc) emits dist/ for development and type declarations;
  * `bundle` (this file) emits dist/bundle.cjs, which package.json `main`
